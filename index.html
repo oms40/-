@@ -899,14 +899,19 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         setIsVisible(entry.isIntersecting);
         
         // If the card becomes visible, ensure the video element is loaded to enable instant playback
-        if (entry.isIntersecting && videoRef.current && videoState !== 'loaded') {
-          try { videoRef.current.load(); } catch (e) { /* ignore */ }
+        if (entry.isIntersecting && videoRef.current) {
+          try {
+            // Prefer aggressive preload/play on visibility to make playback instant
+            try { videoRef.current.preload = 'auto'; } catch (e) {}
+            if (videoState !== 'loaded') {
+              try { videoRef.current.load(); } catch (e) { /* ignore */ }
+            }
+            try { videoRef.current.play().catch(() => {}); } catch (e) {}
+          } catch (err) { /* ignore */ }
         }
 
-        if (!entry.isIntersecting && videoRef.current && videoState === 'loaded') {
-          videoRef.current.pause();
-        } else if (entry.isIntersecting && videoRef.current && videoState === 'loaded') {
-          videoRef.current.play();
+        if (!entry.isIntersecting && videoRef.current) {
+          try { videoRef.current.pause(); } catch (e) {}
         }
       },
       { threshold: 0.2, rootMargin: '50px' }
@@ -978,7 +983,8 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             loop
             muted
             playsInline
-            preload={getPreferredPreload()}
+            // Force aggressive preload for the main card video so it can start instantly when visible
+            preload="auto"
             poster={product.thumbnail}
             fetchpriority="high"
             onLoadedData={handleVideoLoad}
@@ -1896,7 +1902,12 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
       if (videoRef.current) {
-        try { videoRef.current.load(); } catch (e) { /* ignore */ }
+        try {
+          // Ensure the detail modal video preloads and starts playing immediately
+          try { videoRef.current.preload = 'auto'; } catch (e) {}
+          try { videoRef.current.load(); } catch (e) {}
+          try { videoRef.current.play().catch(() => {}); } catch (e) {}
+        } catch (err) {}
       }
     }
 
@@ -1944,45 +1955,39 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             role="button"
             tabIndex={0}
           >
-            {(() => {
-              const mediaUrl = product.media[selectedMediaIndex];
-              if (!mediaUrl) return (
-                <div className="w-full h-72 flex items-center justify-center bg-black/40 text-white/60">Aucun média</div>
-              );
-              if (mediaUrl.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
-                return (
-                  <>
-                    {!mediaLoaded && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-10">
-                        <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full spinner"></div>
-                      </div>
-                    )}
-                    <video
-                      ref={videoRef}
-                      src={mediaUrl}
-                      className="relative w-full h-72 object-cover video-smooth"
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      preload="auto"
-                      poster={product.thumbnail}
-                      fetchpriority="high"
-                      onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
-                    />
-                  </>
-                );
-              }
-              // If image
-              return (
-                <img src={mediaUrl} alt={product.name} loading="lazy" className="w-full h-72 object-cover" />
-              );
-            })()}
+            {product.media[selectedMediaIndex] && product.media[selectedMediaIndex].match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
+              <>
+                {!mediaLoaded && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-10">
+                    <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full spinner"></div>
+                  </div>
+                )}
+                <video
+                  ref={videoRef}
+                  src={product.media[selectedMediaIndex]}
+                  className="relative w-full h-72 object-cover video-smooth"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  // Use auto preload in the detail modal for instant playback on open
+                  preload="auto"
+                  poster={product.thumbnail}
+                  fetchpriority="high"
+                  onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
+                />
+              </>
+            ) : (
+              <img src={product.thumbnail} alt={product.name} loading="lazy" className="w-full h-72 object-cover" />
+            )}
+
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
             <button
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                // Arrêter la lecture de la vidéo si elle existe
                 if (videoRef.current) {
                   videoRef.current.pause();
                   videoRef.current.currentTime = 0;
@@ -1993,6 +1998,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             >
               ✕
             </button>
+
             <div className="absolute bottom-4 left-6">
               <div className="flex items-center gap-3">
                 <span className="text-5xl">{product.emoji}</span>
@@ -2007,37 +2013,58 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             role="listbox"
             aria-label="Sélecteur de médias"
           >
-            {product.media.map((m, idx) => (
+      {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
+                onClick={() => { 
+                  setSelectedMediaIndex(idx); 
+                  setMediaLoaded(false); 
+                  if (videoRef.current) {
+                    try { videoRef.current.preload = 'auto'; } catch(e){}
+                    try { videoRef.current.load(); } catch(e){}
+                    try { videoRef.current.play().catch(() => {}); } catch(e){}
+                  }
+                }}
                 className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
-                style={{ minWidth: 96, minHeight: 64, background: '#18181b' }}
+                style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
                 role="option"
                 aria-selected={selectedMediaIndex === idx}
                 tabIndex={0}
               >
                 {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
+                  // Use poster (product.thumbnail) so the tiny video thumbnails are not black while loading.
                   <video 
                     src={m} 
-                    className="w-full h-full object-cover video-smooth"
+                    poster={product.thumbnail}
+                    className="w-24 h-16 object-cover video-smooth"
                     muted={true}
                     defaultMuted={true}
                     preload="metadata"
-                    playsInline
-                    poster={product.thumbnail}
-                    style={{ background: '#18181b' }}
+                    playsInline 
+                    fetchpriority="high"
+                    onPlay={(e) => { 
+                      try { 
+                        e.target.muted = true; 
+                        e.target.defaultMuted = true;
+                        e.target.volume = 0; 
+                      } catch(err){} 
+                    }}
                     onLoadedMetadata={(e) => {
                       try {
-                        e.target.muted = true;
-                        e.target.defaultMuted = true;
-                        e.target.volume = 0;
+                        const v = e.target;
+                        v.muted = true;
+                        v.defaultMuted = true;
+                        v.volume = 0;
+                        const w = v.videoWidth || 0;
+                        const h = v.videoHeight || 0;
+                        if (h > w) v.classList.add('is-portrait');
+                        else v.classList.remove('is-portrait');
                       } catch (err) {}
                     }}
                   />
                 ) : (
-                  <img src={m} className="w-full h-full object-cover" loading="lazy" />
+                  <img src={m} className="w-24 h-16 object-cover" loading="lazy" />
                 )}
               </button>
             ))}
@@ -2162,7 +2189,8 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
       if (src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
         const v = document.createElement('video');
         v.src = src;
-        v.preload = 'auto';
+        // Preload aggressively neighbours for smooth viewer experience
+        v.preload = (index === i) ? 'auto' : 'metadata';
       } else {
         const img = new Image(); img.src = src;
       }
@@ -2233,7 +2261,7 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
           <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent" />
           <button 
             onClick={(e) => { e.stopPropagation(); onClose(); }}
-            className="absolute top-4 right-4 glass-dark hover:bg-white/10 text-white/90 hover:text-white w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95"
+            className="absolute top-4 right-4 glass-dark hover:bg-white/10 text-white/90 hover:text-white w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 backdrop-blur-lg border border-white/10 pointer-events-auto"
             aria-label="Fermer"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
@@ -2277,8 +2305,9 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
                   defaultMuted={true}
                   controls
                   playsInline
-                  preload={getPreferredPreload()}
-                  fetchpriority={index === idx ? 'high' : 'low'}
+                    // Preload aggressively for the active media to reduce startup delay
+                    preload={index === idx ? 'auto' : 'metadata'}
+                    fetchpriority={index === idx ? 'high' : 'low'}
                   onLoadedData={(e) => { 
                     try { 
                       // Ensure video is muted
