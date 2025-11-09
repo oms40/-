@@ -379,17 +379,6 @@
   .theme-light .backdrop-blur-sm {
     background-color: rgba(255, 255, 255, 0.8) !important;
   }
-
-  /* Low data / reduced visuals mode: disable heavy blurs and particle-like effects */
-  .low-data .glass,
-  .low-data .glass-dark {
-    backdrop-filter: none !important;
-    background: rgba(255,255,255,0.02) !important;
-    border-color: rgba(255,255,255,0.03) !important;
-  }
-
-  .low-data .confetti { display: none; }
-  .low-data .spinner { display: none; }
   
   /* Telegram header spacing - works in both full-screen and partial-screen modes */
   .telegram-header {
@@ -433,41 +422,6 @@ const getPreferredPreload = () => {
   return 'metadata';
 };
 
-// --- Media metrics logger (keeps lightweight metrics locally for inspection) ---
-window.__mediaMetrics = window.__mediaMetrics || [];
-const logMediaMetric = (productId, mediaIndex, eventName) => {
-  try {
-    const item = { productId, mediaIndex, eventName, ts: Date.now(), perf: performance.now() };
-    window.__mediaMetrics.push(item);
-    try { localStorage.setItem('tangerine_media_metrics', JSON.stringify(window.__mediaMetrics.slice(-200))); } catch (e) {}
-    // Also a console log to help debug in dev
-    console.debug('mediaMetric', item);
-  } catch (e) {}
-};
-
-// Small utility to export metrics as a JSON file
-window.downloadMediaMetrics = () => {
-  try {
-    const data = JSON.stringify(window.__mediaMetrics || []);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tangerine_media_metrics_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) { console.warn('export failed', e); }
-};
-
-// Register Service Worker (cautious - only when supported and site served over https or localhost)
-if ('serviceWorker' in navigator) {
-  try {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-      console.info('ServiceWorker registered', reg.scope);
-    }).catch(err => console.warn('SW register failed', err));
-  } catch (e) { console.warn('SW registration exception', e); }
-}
-
 // ===== LOGO =====
 const LOGO_URL = "https://raw.githubusercontent.com/Tangerine1890/Tangerine/refs/heads/main/LOO.jpg";
 
@@ -503,9 +457,9 @@ const PRODUCTS = [
     name: 'Tropicali', 
     emoji: '🥭', 
     media: [
+      'https://files.catbox.moe/p7wuqu.mp4',
       'https://file.garden/aRCOOh-cGER2BR_t/IMG_1798%205%20(1)%20(1).mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204.mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/p7wuqu.mp4'
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204.mp4'
     ], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g1" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23f59e0b;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f97316;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g1)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🥭%3C/text%3E%3C/svg%3E',
     desc: 'Profil tropical intense avec notes de mangue fraîche et fruits exotiques. Effet énergisant et créatif.' 
@@ -516,8 +470,8 @@ const PRODUCTS = [
     name: 'Kush Mints', 
     emoji: '🍵', 
     media: [
-      'https://file.garden/aRCOOh-cGER2BR_t/copy_A0E9A19D-D622-46CF-B7FC-ACC032A9499F%20(1).mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/j1pb3q.mp4'
+      'https://files.catbox.moe/j1pb3q.mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/copy_A0E9A19D-D622-46CF-B7FC-ACC032A9499F%20(1).mp4'
     ], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g2" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%2310b981;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%2306b6d4;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g2)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍵%3C/text%3E%3C/svg%3E',
     desc: 'Arômes mentholés et terreux avec notes de cookies. Relaxation profonde et sensation apaisante prolongée.' 
@@ -527,7 +481,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tropi Tangie', 
     emoji: '🍊', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/8mcpqd.mp4'], 
+    media: ['https://files.catbox.moe/8mcpqd.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g3" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23fb923c;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f97316;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g3)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍊%3C/text%3E%3C/svg%3E',
     desc: 'Explosion d\'agrumes et tangerine juteuse. Parfait pour la journée, énergisant et euphorisant.' 
   },
@@ -536,7 +490,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Miracle Alien Cookies', 
     emoji: '🍪', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/r2bndl.mp4'], 
+    media: ['https://files.catbox.moe/r2bndl.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g4" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23d97706;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23b45309;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g4)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍪%3C/text%3E%3C/svg%3E',
     desc: 'Saveur gourmande de cookies fraîchement cuits et crème onctueuse. Une expérience douce et réconfortante.' 
   },
@@ -545,7 +499,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tchikita Banana', 
     emoji: '🍌', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/brxc41.mp4'], 
+    media: ['https://files.catbox.moe/brxc41.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g5" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23fbbf24;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f59e0b;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g5)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍌%3C/text%3E%3C/svg%3E',
     desc: 'Douceur fruitée de banane mûre avec finale sucrée. Effet relaxant et apaisant.' 
   },
@@ -554,7 +508,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Gelato Cheesecake', 
     emoji: '🍰', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/c6pp40.mp4'], 
+    media: ['https://files.catbox.moe/c6pp40.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g6" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23ec4899;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f43f5e;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g6)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍰%3C/text%3E%3C/svg%3E',
     desc: 'Texture crémeuse et profil sucré avec arômes de dessert raffiné. Une douceur irrésistible.' 
   },
@@ -563,7 +517,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tropicali Cherry', 
     emoji: '🍒', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/4420rt.mp4'], 
+    media: ['https://files.catbox.moe/4420rt.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g7" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23dc2626;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f43f5e;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g7)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍒%3C/text%3E%3C/svg%3E',
     desc: 'Cerise tropicale juteuse et sucrée avec finale rafraîchissante. Équilibre parfait.' 
   },
@@ -572,7 +526,7 @@ const PRODUCTS = [
     category: 'freshfrozen', 
     name: 'Grape Pie X Biscotti', 
     emoji: '🍇', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/dwoclc.mp4'], 
+    media: ['https://files.catbox.moe/dwoclc.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g8" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%238b5cf6;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%236366f1;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g8)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍇%3C/text%3E%3C/svg%3E',
     desc: 'Raisin doux mélangé à des notes de biscuits croquants. Harmonie subtile et saveur élégante.' 
   }
@@ -920,8 +874,7 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
 
   const handleVideoLoad = useCallback(() => {
     setVideoState('loaded');
-    try { logMediaMetric(product.id || product.name || 'unknown', 0, 'card_loadeddata'); } catch (e) {}
-  }, [product]);
+  }, []);
 
   const handleVideoError = useCallback(() => {
     setVideoState('error');
@@ -973,7 +926,7 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             onLoadedData={handleVideoLoad}
             onError={handleVideoError}
           />
-          )}
+        )}
 
         {videoState === 'loading' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-10">
@@ -1939,7 +1892,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                   preload={getPreferredPreload()}
                   poster={product.thumbnail}
                   fetchpriority="high"
-                  onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
+                  onLoadedData={() => setMediaLoaded(true)}
                 />
               </>
             ) : (
@@ -2119,17 +2072,7 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
               className="absolute inset-0 w-full h-full flex items-center justify-center"
             >
               {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-                <video
-                  src={m}
-                  className="w-full max-h-[80vh] object-contain video-smooth"
-                  autoPlay
-                  muted
-                  controls
-                  playsInline
-                  preload={getPreferredPreload()}
-                  fetchpriority={index === idx ? 'high' : 'low'}
-                  onLoadedData={() => { try { logMediaMetric(product.id || product.name || 'unknown', idx, 'viewer_loadeddata'); } catch(e){} }}
-                />
+                <video src={m} className="w-full max-h-[80vh] object-contain video-smooth" autoPlay muted controls playsInline preload={getPreferredPreload()} fetchpriority={index === idx ? 'high' : 'low'} />
               ) : (
                 <img src={m} loading="lazy" className="w-full max-h-[80vh] object-contain" />
               )}
@@ -2238,10 +2181,6 @@ const App = () => {
           const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
           const isFast = nav ? (nav.saveData ? false : (nav.effectiveType || '').toLowerCase().includes('4g')) : true;
           setShowParticles(window.innerWidth > 700 && isFast);
-          // Add a low-data CSS mode to reduce heavy visual effects for slow connections
-          const isLowData = nav ? (nav.saveData || !((nav.effectiveType||'').toLowerCase().includes('4g'))) : false;
-          if (isLowData) document.documentElement.classList.add('low-data');
-          else document.documentElement.classList.remove('low-data');
         } catch (e) { setShowParticles(window.innerWidth > 700); }
       } catch (error) {
         console.error('Failed to load data:', error);
