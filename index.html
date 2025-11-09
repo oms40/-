@@ -211,17 +211,6 @@
     transition: all 0.3s ease-out;
   }
 
-  /* Hide scrollbar but keep functionality */
-  .hide-scrollbar {
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE and Edge */
-    scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
-  }
-  .hide-scrollbar::-webkit-scrollbar {
-    display: none; /* Chrome, Safari, Opera */
-  }
-
   /* Smooth transition for videos when swapping / loading */
   .video-smooth {
     transition: opacity 0.28s ease, transform 0.28s ease;
@@ -899,19 +888,14 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         setIsVisible(entry.isIntersecting);
         
         // If the card becomes visible, ensure the video element is loaded to enable instant playback
-        if (entry.isIntersecting && videoRef.current) {
-          try {
-            // Prefer aggressive preload/play on visibility to make playback instant
-            try { videoRef.current.preload = 'auto'; } catch (e) {}
-            if (videoState !== 'loaded') {
-              try { videoRef.current.load(); } catch (e) { /* ignore */ }
-            }
-            try { videoRef.current.play().catch(() => {}); } catch (e) {}
-          } catch (err) { /* ignore */ }
+        if (entry.isIntersecting && videoRef.current && videoState !== 'loaded') {
+          try { videoRef.current.load(); } catch (e) { /* ignore */ }
         }
 
-        if (!entry.isIntersecting && videoRef.current) {
-          try { videoRef.current.pause(); } catch (e) {}
+        if (!entry.isIntersecting && videoRef.current && videoState === 'loaded') {
+          videoRef.current.pause();
+        } else if (entry.isIntersecting && videoRef.current && videoState === 'loaded') {
+          videoRef.current.play();
         }
       },
       { threshold: 0.2, rootMargin: '50px' }
@@ -983,8 +967,7 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             loop
             muted
             playsInline
-            // Force aggressive preload for the main card video so it can start instantly when visible
-            preload="auto"
+            preload={getPreferredPreload()}
             poster={product.thumbnail}
             fetchpriority="high"
             onLoadedData={handleVideoLoad}
@@ -1902,26 +1885,9 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
       if (videoRef.current) {
-        try {
-          // Ensure the detail modal video preloads and starts playing immediately
-          try { videoRef.current.preload = 'auto'; } catch (e) {}
-          try { videoRef.current.load(); } catch (e) {}
-          try { videoRef.current.play().catch(() => {}); } catch (e) {}
-        } catch (err) {}
+        try { videoRef.current.load(); } catch (e) { /* ignore */ }
       }
     }
-
-    // Nettoyage lors de la fermeture du modal
-    return () => {
-      if (videoRef.current) {
-        try {
-          videoRef.current.pause();
-          videoRef.current.currentTime = 0;
-          videoRef.current.src = "";
-          videoRef.current.load();
-        } catch (e) { /* ignore */ }
-      }
-    };
   }, [product]);
 
   if (!product) return null;
@@ -1970,8 +1936,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                   loop
                   muted
                   playsInline
-                  // Use auto preload in the detail modal for instant playback on open
-                  preload="auto"
+                  preload={getPreferredPreload()}
                   poster={product.thumbnail}
                   fetchpriority="high"
                   onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
@@ -1984,16 +1949,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
             <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                // Arrêter la lecture de la vidéo si elle existe
-                if (videoRef.current) {
-                  videoRef.current.pause();
-                  videoRef.current.currentTime = 0;
-                }
-                onClose();
-              }}
+              onClick={onClose}
               className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 w-12 h-12 rounded-full transition-all flex items-center justify-center text-2xl z-20 active:scale-90"
             >
               ✕
@@ -2008,61 +1964,17 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
           </div>
 
           {/* Thumbnails / media selector */}
-          <div 
-            className="p-4 flex gap-3 overflow-x-auto hide-scrollbar"
-            role="listbox"
-            aria-label="Sélecteur de médias"
-          >
+          <div className="p-4 flex gap-3 overflow-x-auto">
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { 
-                  setSelectedMediaIndex(idx); 
-                  setMediaLoaded(false); 
-                  if (videoRef.current) {
-                    try { videoRef.current.preload = 'auto'; } catch(e){}
-                    try { videoRef.current.load(); } catch(e){}
-                    try { videoRef.current.play().catch(() => {}); } catch(e){}
-                  }
-                }}
-                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
+                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
+                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400' : 'border-white/10'} p-0`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
-                role="option"
-                aria-selected={selectedMediaIndex === idx}
-                tabIndex={0}
               >
                 {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-                  // Use poster (product.thumbnail) so the tiny video thumbnails are not black while loading.
-                  <video 
-                    src={m} 
-                    poster={product.thumbnail}
-                    className="w-24 h-16 object-cover video-smooth"
-                    muted={true}
-                    defaultMuted={true}
-                    preload="metadata"
-                    playsInline 
-                    fetchpriority="high"
-                    onPlay={(e) => { 
-                      try { 
-                        e.target.muted = true; 
-                        e.target.defaultMuted = true;
-                        e.target.volume = 0; 
-                      } catch(err){} 
-                    }}
-                    onLoadedMetadata={(e) => {
-                      try {
-                        const v = e.target;
-                        v.muted = true;
-                        v.defaultMuted = true;
-                        v.volume = 0;
-                        const w = v.videoWidth || 0;
-                        const h = v.videoHeight || 0;
-                        if (h > w) v.classList.add('is-portrait');
-                        else v.classList.remove('is-portrait');
-                      } catch (err) {}
-                    }}
-                  />
+                  <video src={m} className="w-24 h-16 object-cover video-smooth" muted preload={getPreferredPreload()} playsInline fetchpriority="low" />
                 ) : (
                   <img src={m} className="w-24 h-16 object-cover" loading="lazy" />
                 )}
@@ -2137,22 +2049,6 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const containerRef = useRef(null);
   const startX = useRef(0);
   const deltaX = useRef(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const dragThreshold = 0.15; // 15% width for swipe trigger
-  const [isControlsVisible, setIsControlsVisible] = useState(true);
-  const controlsTimerRef = useRef(null);
-
-  // Gérer l'affichage/masquage automatique des contrôles
-  const resetControlsTimer = useCallback(() => {
-    if (controlsTimerRef.current) {
-      clearTimeout(controlsTimerRef.current);
-    }
-    setIsControlsVisible(true);
-    controlsTimerRef.current = setTimeout(() => {
-      setIsControlsVisible(false);
-    }, 2500);
-  }, []);
 
   useEffect(() => {
     setIndex(startIndex || 0);
@@ -2160,23 +2056,13 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
 
   useEffect(() => {
     if (!isOpen) return;
-    
     const onKey = (e) => {
       if (e.key === 'ArrowRight') setIndex(i => Math.min(i + 1, (product?.media?.length || 1) - 1));
       if (e.key === 'ArrowLeft') setIndex(i => Math.max(i - 1, 0));
       if (e.key === 'Escape') onClose && onClose();
-      resetControlsTimer();
     };
-
     window.addEventListener('keydown', onKey);
-    resetControlsTimer();
-
-    return () => {
-      window.removeEventListener('keydown', onKey);
-      if (controlsTimerRef.current) {
-        clearTimeout(controlsTimerRef.current);
-      }
-    };
+    return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, product, onClose]);
 
   useEffect(() => {
@@ -2189,8 +2075,7 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
       if (src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
         const v = document.createElement('video');
         v.src = src;
-        // Preload aggressively neighbours for smooth viewer experience
-        v.preload = (index === i) ? 'auto' : 'metadata';
+        v.preload = 'auto';
       } else {
         const img = new Image(); img.src = src;
       }
@@ -2202,128 +2087,48 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const goNext = () => setIndex(i => Math.min(i + 1, product.media.length - 1));
   const goPrev = () => setIndex(i => Math.max(i - 1, 0));
 
-  const handleTouchStart = (e) => {
-    setIsDragging(true);
-    startX.current = e.touches[0].clientX;
-    deltaX.current = 0;
-  };
-
-  const handleTouchMove = (e) => {
-    if (!isDragging) return;
-    deltaX.current = e.touches[0].clientX - startX.current;
-    
-    // Calculate offset as percentage of container width
-    const containerWidth = containerRef.current?.clientWidth || 1;
-    const offsetPercent = (deltaX.current / containerWidth);
-    
-    // Limit drag to next/prev media with resistance at ends
-    const hasNext = index < (product.media.length - 1);
-    const hasPrev = index > 0;
-    
-    // Apply resistance using a cubic function for smoother feel
-    if ((!hasNext && offsetPercent < 0) || (!hasPrev && offsetPercent > 0)) {
-      const resistance = 0.15;
-      const resistedOffset = Math.sign(offsetPercent) * Math.pow(Math.abs(offsetPercent), 3) * resistance;
-      setDragOffset(resistedOffset);
-    } else {
-      // Add some subtle resistance even within bounds for better feel
-      const withinBoundsResistance = 0.85;
-      setDragOffset(offsetPercent * withinBoundsResistance);
-    }
-  };
-
+  const handleTouchStart = (e) => { startX.current = e.touches[0].clientX; deltaX.current = 0; };
+  const handleTouchMove = (e) => { deltaX.current = e.touches[0].clientX - startX.current; };
   const handleTouchEnd = () => {
-    setIsDragging(false);
-    
-    // If movement exceeds threshold, change media
-    if (Math.abs(dragOffset) > dragThreshold) {
-      if (dragOffset < 0) goNext(); else goPrev();
+    if (Math.abs(deltaX.current) > 50) {
+      if (deltaX.current < 0) goNext(); else goPrev();
     }
-    
-    // Reset offset
-    setDragOffset(0);
     deltaX.current = 0;
   };
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/95 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={onClose}>
       <div
         ref={containerRef}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
-        className="w-full h-full relative flex items-center justify-center"
+        className="w-full max-w-4xl max-h-[90vh] relative flex items-center justify-center"
       >
-        {/* En-tête avec dégradé et bouton de fermeture */}
-        <div className="fixed top-0 left-0 right-0 h-24 z-50 pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent" />
-          <button 
-            onClick={(e) => { e.stopPropagation(); onClose(); }}
-            className="absolute top-4 right-4 glass-dark hover:bg-white/10 text-white/90 hover:text-white w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 backdrop-blur-lg border border-white/10 pointer-events-auto"
-            aria-label="Fermer"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
-              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-        </div>
+        <button onClick={onClose} className="absolute top-4 right-4 z-40 text-white text-3xl">✕</button>
 
-        {index > 0 && (
-          <button 
-            onClick={() => { goPrev(); }} 
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-40 bg-black/40 hover:bg-black/60 backdrop-blur text-white w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
-          >◀</button>
-        )}
-        {index < product.media.length - 1 && (
-          <button 
-            onClick={() => { goNext(); }} 
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-40 bg-black/40 hover:bg-black/60 backdrop-blur text-white w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
-          >▶</button>
-        )}
+        <button onClick={() => { goPrev(); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-40 text-white text-4xl p-2">◀</button>
+        <button onClick={() => { goNext(); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-40 text-white text-4xl p-2">▶</button>
 
         <div className="w-full overflow-hidden rounded-2xl">
           {product.media.map((m, idx) => (
             <div
               key={m + idx}
-              style={{
-                transform: `translateX(${100 * (idx - index) + (dragOffset * 100)}%)`,
-                transition: isDragging ? 'none' : 'all 400ms cubic-bezier(0.4, 0, 0.2, 1)',
-                opacity: Math.abs(idx - index) <= 1 ? 1 : 0,
-                scale: isDragging ? '0.98' : '1',
-                filter: isDragging ? 'brightness(0.9)' : 'brightness(1)'
-              }}
-              className="absolute inset-0 w-full h-full flex items-center justify-center touch-none select-none"
+              style={{ transform: `translateX(${100 * (idx - index)}%)`, transition: 'transform 300ms ease, opacity 300ms ease' }}
+              className="absolute inset-0 w-full h-full flex items-center justify-center"
             >
               {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
                 <video
                   src={m}
                   className="w-full max-h-[80vh] object-contain video-smooth"
                   autoPlay
-                  muted={true}
-                  defaultMuted={true}
+                  muted
                   controls
                   playsInline
-                    // Preload aggressively for the active media to reduce startup delay
-                    preload={index === idx ? 'auto' : 'metadata'}
-                    fetchpriority={index === idx ? 'high' : 'low'}
-                  onLoadedData={(e) => { 
-                    try { 
-                      // Ensure video is muted
-                      e.target.muted = true;
-                      e.target.defaultMuted = true;
-                      e.target.volume = 0;
-                      logMediaMetric(product.id || product.name || 'unknown', idx, 'viewer_loadeddata'); 
-                    } catch(e){} 
-                  }}
-                  onPlay={(e) => {
-                    try {
-                      // Double check muting on play
-                      e.target.muted = true;
-                      e.target.volume = 0;
-                    } catch(e){}
-                  }}
+                  preload={getPreferredPreload()}
+                  fetchpriority={index === idx ? 'high' : 'low'}
+                  onLoadedData={() => { try { logMediaMetric(product.id || product.name || 'unknown', idx, 'viewer_loadeddata'); } catch(e){} }}
                 />
               ) : (
                 <img src={m} loading="lazy" className="w-full max-h-[80vh] object-contain" />
@@ -2332,32 +2137,10 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
           ))}
         </div>
 
-        {/* Indicateurs de médias et barre de contrôle en bas */}
-        <div className={`absolute bottom-0 left-0 right-0 z-40 transition-opacity duration-300 ${
-          isControlsVisible ? 'opacity-100' : 'opacity-0'
-        }`}>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent pointer-events-none" />
-          <div className="relative p-4 flex flex-col items-center">
-            {/* Points de navigation */}
-            <div className="flex items-center gap-2 mb-2">
-              {product.media.map((m, idx) => (
-                <button 
-                  key={m + idx} 
-                  onClick={(e) => { e.stopPropagation(); setIndex(idx); }}
-                  className={`w-1.5 h-1.5 rounded-full transition-all ${
-                    idx === index 
-                      ? 'bg-white scale-150' 
-                      : 'bg-white/40 hover:bg-white/60'
-                  }`}
-                  title={`Média ${idx + 1}`}
-                />
-              ))}
-            </div>
-            {/* Info sur le média actuel */}
-            <div className="text-white/60 text-xs font-medium">
-              {index + 1} / {product.media.length}
-            </div>
-          </div>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex gap-2">
+          {product.media.map((m, idx) => (
+            <button key={m + idx} onClick={() => setIndex(idx)} className={`w-2 h-2 rounded-full ${idx === index ? 'bg-white' : 'bg-white/30'}`} />
+          ))}
         </div>
       </div>
     </div>
@@ -2421,7 +2204,6 @@ const App = () => {
     setViewerOpen(false);
     setViewerProduct(null);
     setViewerStartIndex(0);
-    setSelectedProduct(null); // Also close detail modal when closing viewer
     document.body.style.overflow = 'unset';
     trackEvent('viewer_closed');
   }, []);
