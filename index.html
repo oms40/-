@@ -1940,40 +1940,44 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
           {/* Main media preview (image or video) - clicking opens fullscreen viewer */}
           <div
             onClick={() => openViewer && openViewer(product, selectedMediaIndex)}
-            className="cursor-zoom-in relative w-full h-72 rounded-t-3xl overflow-hidden bg-gradient-to-br from-slate-800 to-slate-900"
+            className="cursor-zoom-in relative w-full h-72 rounded-t-3xl overflow-hidden"
             role="button"
             tabIndex={0}
           >
-            {/* Thumbnail de fond visible tant que la vidéo n'est pas chargée */}
-            <div
-              className={`absolute inset-0 bg-cover bg-center bg-no-repeat transition-opacity duration-300 ${mediaLoaded ? 'opacity-0' : 'opacity-40'}`}
-              style={{ backgroundImage: `url(${product.thumbnail})` }}
-            />
-            {product.media[selectedMediaIndex] && product.media[selectedMediaIndex].match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-              <>
-                {!mediaLoaded && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-10">
-                    <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full spinner"></div>
-                  </div>
-                )}
-                <video
-                  ref={videoRef}
-                  src={product.media[selectedMediaIndex]}
-                  className="relative w-full h-72 object-cover video-smooth"
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  preload="auto"
-                  poster={product.thumbnail}
-                  fetchpriority="high"
-                  onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
-                  onError={() => { setMediaLoaded(true); }}
-                />
-              </>
-            ) : (
-              <img src={product.thumbnail} alt={product.name} loading="lazy" className="w-full h-72 object-cover" />
-            )}
+            {(() => {
+              const mediaUrl = product.media[selectedMediaIndex];
+              if (!mediaUrl) return (
+                <div className="w-full h-72 flex items-center justify-center bg-black/40 text-white/60">Aucun média</div>
+              );
+              if (mediaUrl.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
+                return (
+                  <>
+                    {!mediaLoaded && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-10">
+                        <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full spinner"></div>
+                      </div>
+                    )}
+                    <video
+                      ref={videoRef}
+                      src={mediaUrl}
+                      className="relative w-full h-72 object-cover video-smooth"
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      preload="auto"
+                      poster={product.thumbnail}
+                      fetchpriority="high"
+                      onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
+                    />
+                  </>
+                );
+              }
+              // If image
+              return (
+                <img src={mediaUrl} alt={product.name} loading="lazy" className="w-full h-72 object-cover" />
+              );
+            })()}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
             <button
               onClick={(e) => {
@@ -1996,6 +2000,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
               </div>
             </div>
           </div>
+
           {/* Thumbnails / media selector */}
           <div 
             className="p-4 flex gap-3 overflow-x-auto hide-scrollbar"
@@ -2005,70 +2010,94 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { 
-                  setSelectedMediaIndex(idx); 
-                  setMediaLoaded(false); 
-                  if (videoRef.current) try { 
-                    videoRef.current.load(); 
-                  } catch(e){} 
-                }}
-                className={`rounded-xl overflow-hidden border-2 relative ${
-                  selectedMediaIndex === idx 
-                    ? 'border-orange-400 ring-2 ring-orange-400/50 shadow-lg shadow-orange-500/20' 
-                    : 'border-white/10 hover:border-white/30'
-                } p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50 bg-gradient-to-br from-slate-800 to-slate-900`}
-                style={{ minWidth: 96, minHeight: 64 }}
+                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
+                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
+                style={{ minWidth: 96, minHeight: 64, background: '#18181b' }}
                 title={`Ouvrir média ${idx + 1}`}
                 role="option"
                 aria-selected={selectedMediaIndex === idx}
                 tabIndex={0}
               >
-                {/* Thumbnail de fond */}
-                <div
-                  className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-40"
-                  style={{ backgroundImage: `url(${product.thumbnail})` }}
-                />
                 {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
                   <video 
                     src={m} 
-                    className="w-24 h-16 object-cover video-smooth relative z-10"
-                    muted 
+                    className="w-full h-full object-cover video-smooth"
+                    muted={true}
+                    defaultMuted={true}
                     preload="metadata"
-                    playsInline 
+                    playsInline
                     poster={product.thumbnail}
-                    fetchpriority="high"
-                    onPlay={(e) => { try { e.target.muted = true; e.target.volume = 0; } catch(err){} }}
-                    onError={() => {}}
+                    style={{ background: '#18181b' }}
+                    onLoadedMetadata={(e) => {
+                      try {
+                        e.target.muted = true;
+                        e.target.defaultMuted = true;
+                        e.target.volume = 0;
+                      } catch (err) {}
+                    }}
                   />
                 ) : (
-                  <img src={m || product.thumbnail} className="w-24 h-16 object-cover relative z-10" loading="lazy" />
+                  <img src={m} className="w-full h-full object-cover" loading="lazy" />
                 )}
               </button>
             ))}
           </div>
-          
-          <div className="flex gap-3">
-            <input
-              type="number"
-              min={MIN_QUANTITY}
-              value={selectedQuantity}
-              onChange={(e) => setSelectedQuantity(Math.max(MIN_QUANTITY, parseInt(e.target.value) || MIN_QUANTITY))}
-              className="flex-1 glass text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-center font-bold"
-              placeholder={`Min. ${MIN_QUANTITY}g`}
-            />
-            <div className="glass px-6 py-3 rounded-xl flex items-center">
-              <span className="text-white font-bold text-xl">{price}€</span>
-            </div>
-          </div>
         </div>
 
-        <button
-          onClick={handleAddToCart}
-          className="w-full bg-gradient-to-r from-orange-500 via-pink-500 to-orange-500 hover:from-orange-600 hover:via-pink-600 hover:to-orange-600 text-white font-bold py-4 rounded-2xl transition-all hover:scale-105 active:scale-95 glow flex items-center justify-center gap-2"
-        >
-          <span>🛒</span>
-          <span>Ajouter ({price}€)</span>
-        </button>
+        <div className="p-6 space-y-6">
+          <div>
+            <h3 className="text-white font-bold text-lg mb-2">📝 Description</h3>
+            <p className="text-white/80 leading-relaxed text-sm">{product.desc}</p>
+          </div>
+
+          <div className="glass p-4 rounded-2xl flex items-center justify-between">
+            <div>
+              <p className="text-white/60 text-sm mb-1">Prix unitaire</p>
+              <p className="gradient-text font-black text-2xl">{PRICES[product.category]}€/g</p>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-white font-bold text-lg mb-3">⚖️ Quantité (min. {MIN_QUANTITY}g)</h3>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {QUANTITY_OPTIONS.map(qty => (
+                <button
+                  key={qty}
+                  onClick={() => setSelectedQuantity(qty)}
+                  className={`${
+                    selectedQuantity === qty
+                      ? 'bg-gradient-to-r from-orange-500 to-pink-500 scale-105'
+                      : 'glass hover:bg-white/10'
+                  } text-white font-bold py-3 rounded-xl transition-all active:scale-95`}
+                >
+                  {qty}g
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex gap-3">
+              <input
+                type="number"
+                min={MIN_QUANTITY}
+                value={selectedQuantity}
+                onChange={(e) => setSelectedQuantity(Math.max(MIN_QUANTITY, parseInt(e.target.value) || MIN_QUANTITY))}
+                className="flex-1 glass text-white px-4 py-3 rounded-xl outline-none focus:ring-2 focus:ring-orange-500 text-center font-bold"
+                placeholder={`Min. ${MIN_QUANTITY}g`}
+              />
+              <div className="glass px-6 py-3 rounded-xl flex items-center">
+                <span className="text-white font-bold text-xl">{price}€</span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleAddToCart}
+            className="w-full bg-gradient-to-r from-orange-500 via-pink-500 to-orange-500 hover:from-orange-600 hover:via-pink-600 hover:to-orange-600 text-white font-bold py-4 rounded-2xl transition-all hover:scale-105 active:scale-95 glow flex items-center justify-center gap-2"
+          >
+            <span>🛒</span>
+            <span>Ajouter ({price}€)</span>
+          </button>
+        </div>
       </div>
     </div>
   );
