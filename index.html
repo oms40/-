@@ -2118,6 +2118,19 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
   const dragThreshold = 0.15; // 15% width for swipe trigger
+  const [isControlsVisible, setIsControlsVisible] = useState(true);
+  const controlsTimerRef = useRef(null);
+
+  // Gérer l'affichage/masquage automatique des contrôles
+  const resetControlsTimer = useCallback(() => {
+    if (controlsTimerRef.current) {
+      clearTimeout(controlsTimerRef.current);
+    }
+    setIsControlsVisible(true);
+    controlsTimerRef.current = setTimeout(() => {
+      setIsControlsVisible(false);
+    }, 2500);
+  }, []);
 
   useEffect(() => {
     setIndex(startIndex || 0);
@@ -2125,13 +2138,23 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
 
   useEffect(() => {
     if (!isOpen) return;
+    
     const onKey = (e) => {
       if (e.key === 'ArrowRight') setIndex(i => Math.min(i + 1, (product?.media?.length || 1) - 1));
       if (e.key === 'ArrowLeft') setIndex(i => Math.max(i - 1, 0));
       if (e.key === 'Escape') onClose && onClose();
+      resetControlsTimer();
     };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    resetControlsTimer();
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (controlsTimerRef.current) {
+        clearTimeout(controlsTimerRef.current);
+      }
+    };
   }, [isOpen, product, onClose]);
 
   useEffect(() => {
@@ -2278,19 +2301,32 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
           ))}
         </div>
 
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-40 flex gap-3 p-2 bg-black/40 backdrop-blur rounded-full">
-          {product.media.map((m, idx) => (
-            <button 
-              key={m + idx} 
-              onClick={() => setIndex(idx)} 
-              className={`w-2.5 h-2.5 rounded-full transition-all ${
-                idx === index 
-                  ? 'bg-white scale-125' 
-                  : 'bg-white/30 hover:bg-white/50'
-              }`}
-              title={`Média ${idx + 1}`}
-            />
-          ))}
+        {/* Indicateurs de médias et barre de contrôle en bas */}
+        <div className={`absolute bottom-0 left-0 right-0 z-40 transition-opacity duration-300 ${
+          isControlsVisible ? 'opacity-100' : 'opacity-0'
+        }`}>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent pointer-events-none" />
+          <div className="relative p-4 flex flex-col items-center">
+            {/* Points de navigation */}
+            <div className="flex items-center gap-2 mb-2">
+              {product.media.map((m, idx) => (
+                <button 
+                  key={m + idx} 
+                  onClick={(e) => { e.stopPropagation(); setIndex(idx); }}
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    idx === index 
+                      ? 'bg-white scale-150' 
+                      : 'bg-white/40 hover:bg-white/60'
+                  }`}
+                  title={`Média ${idx + 1}`}
+                />
+              ))}
+            </div>
+            {/* Info sur le média actuel */}
+            <div className="text-white/60 text-xs font-medium">
+              {index + 1} / {product.media.length}
+            </div>
+          </div>
         </div>
       </div>
     </div>
