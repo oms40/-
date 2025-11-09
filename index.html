@@ -211,6 +211,17 @@
     transition: all 0.3s ease-out;
   }
 
+  /* Hide scrollbar but keep functionality */
+  .hide-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
+  }
+
   /* Smooth transition for videos when swapping / loading */
   .video-smooth {
     transition: opacity 0.28s ease, transform 0.28s ease;
@@ -379,6 +390,17 @@
   .theme-light .backdrop-blur-sm {
     background-color: rgba(255, 255, 255, 0.8) !important;
   }
+
+  /* Low data / reduced visuals mode: disable heavy blurs and particle-like effects */
+  .low-data .glass,
+  .low-data .glass-dark {
+    backdrop-filter: none !important;
+    background: rgba(255,255,255,0.02) !important;
+    border-color: rgba(255,255,255,0.03) !important;
+  }
+
+  .low-data .confetti { display: none; }
+  .low-data .spinner { display: none; }
   
   /* Telegram header spacing - works in both full-screen and partial-screen modes */
   .telegram-header {
@@ -422,6 +444,66 @@ const getPreferredPreload = () => {
   return 'metadata';
 };
 
+// --- Media metrics logger (keeps lightweight metrics locally for inspection) ---
+window.__mediaMetrics = window.__mediaMetrics || [];
+const logMediaMetric = (productId, mediaIndex, eventName) => {
+  try {
+    const item = { productId, mediaIndex, eventName, ts: Date.now(), perf: performance.now() };
+    window.__mediaMetrics.push(item);
+    try { localStorage.setItem('tangerine_media_metrics', JSON.stringify(window.__mediaMetrics.slice(-200))); } catch (e) {}
+    // Also a console log to help debug in dev
+    console.debug('mediaMetric', item);
+  } catch (e) {}
+};
+
+// Small utility to export metrics as a JSON file
+window.downloadMediaMetrics = () => {
+  try {
+    const data = JSON.stringify(window.__mediaMetrics || []);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tangerine_media_metrics_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { console.warn('export failed', e); }
+};
+
+// ----- Video diagnostics (debug) -----
+window.__videoDiagnostics = window.__videoDiagnostics || [];
+const logVideoDiag = (payload) => {
+  try {
+    const item = Object.assign({ ts: Date.now(), perf: (performance && performance.now) ? performance.now() : 0 }, payload);
+    window.__videoDiagnostics.push(item);
+    try { localStorage.setItem('tangerine_video_diagnostics', JSON.stringify(window.__videoDiagnostics.slice(-500))); } catch (e) {}
+    console.debug('videoDiag', item);
+  } catch (e) {}
+};
+
+window.downloadVideoDiagnostics = () => {
+  try {
+    const data = JSON.stringify(window.__videoDiagnostics || []);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tangerine_video_diagnostics_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) { console.warn('export failed', e); }
+};
+
+
+// Register Service Worker (cautious - only when supported and site served over https or localhost)
+if ('serviceWorker' in navigator) {
+  try {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      console.info('ServiceWorker registered', reg.scope);
+    }).catch(err => console.warn('SW register failed', err));
+  } catch (e) { console.warn('SW registration exception', e); }
+}
+
 // ===== LOGO =====
 const LOGO_URL = "https://raw.githubusercontent.com/Tangerine1890/Tangerine/refs/heads/main/LOO.jpg";
 
@@ -457,9 +539,9 @@ const PRODUCTS = [
     name: 'Tropicali', 
     emoji: '🥭', 
     media: [
-      'https://files.catbox.moe/p7wuqu.mp4',
       'https://file.garden/aRCOOh-cGER2BR_t/IMG_1798%205%20(1)%20(1).mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204.mp4'
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204.mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/p7wuqu.mp4'
     ], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g1" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23f59e0b;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f97316;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g1)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🥭%3C/text%3E%3C/svg%3E',
     desc: 'Profil tropical intense avec notes de mangue fraîche et fruits exotiques. Effet énergisant et créatif.' 
@@ -470,8 +552,8 @@ const PRODUCTS = [
     name: 'Kush Mints', 
     emoji: '🍵', 
     media: [
-      'https://files.catbox.moe/j1pb3q.mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/copy_A0E9A19D-D622-46CF-B7FC-ACC032A9499F%20(1).mp4'
+      'https://file.garden/aRCOOh-cGER2BR_t/copy_A0E9A19D-D622-46CF-B7FC-ACC032A9499F%20(1).mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/j1pb3q.mp4'
     ], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g2" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%2310b981;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%2306b6d4;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g2)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍵%3C/text%3E%3C/svg%3E',
     desc: 'Arômes mentholés et terreux avec notes de cookies. Relaxation profonde et sensation apaisante prolongée.' 
@@ -481,7 +563,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tropi Tangie', 
     emoji: '🍊', 
-    media: ['https://files.catbox.moe/8mcpqd.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/8mcpqd.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g3" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23fb923c;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f97316;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g3)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍊%3C/text%3E%3C/svg%3E',
     desc: 'Explosion d\'agrumes et tangerine juteuse. Parfait pour la journée, énergisant et euphorisant.' 
   },
@@ -490,7 +572,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Miracle Alien Cookies', 
     emoji: '🍪', 
-    media: ['https://files.catbox.moe/r2bndl.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/r2bndl.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g4" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23d97706;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23b45309;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g4)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍪%3C/text%3E%3C/svg%3E',
     desc: 'Saveur gourmande de cookies fraîchement cuits et crème onctueuse. Une expérience douce et réconfortante.' 
   },
@@ -499,7 +581,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tchikita Banana', 
     emoji: '🍌', 
-    media: ['https://files.catbox.moe/brxc41.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/brxc41.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g5" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23fbbf24;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f59e0b;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g5)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍌%3C/text%3E%3C/svg%3E',
     desc: 'Douceur fruitée de banane mûre avec finale sucrée. Effet relaxant et apaisant.' 
   },
@@ -508,7 +590,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Gelato Cheesecake', 
     emoji: '🍰', 
-    media: ['https://files.catbox.moe/c6pp40.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/c6pp40.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g6" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23ec4899;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f43f5e;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g6)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍰%3C/text%3E%3C/svg%3E',
     desc: 'Texture crémeuse et profil sucré avec arômes de dessert raffiné. Une douceur irrésistible.' 
   },
@@ -517,7 +599,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tropicali Cherry', 
     emoji: '🍒', 
-    media: ['https://files.catbox.moe/4420rt.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/4420rt.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g7" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23dc2626;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f43f5e;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g7)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍒%3C/text%3E%3C/svg%3E',
     desc: 'Cerise tropicale juteuse et sucrée avec finale rafraîchissante. Équilibre parfait.' 
   },
@@ -526,7 +608,7 @@ const PRODUCTS = [
     category: 'freshfrozen', 
     name: 'Grape Pie X Biscotti', 
     emoji: '🍇', 
-    media: ['https://files.catbox.moe/dwoclc.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/dwoclc.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g8" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%238b5cf6;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%236366f1;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g8)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍇%3C/text%3E%3C/svg%3E',
     desc: 'Raisin doux mélangé à des notes de biscuits croquants. Harmonie subtile et saveur élégante.' 
   }
@@ -827,6 +909,12 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
   const videoRef = useRef(null);
   const cardRef = useRef(null);
   const observerRef = useRef(null);
+  // diagnostics helper for this card
+  const pushDiag = useCallback((eventName, details = {}) => {
+    try {
+      logVideoDiag({ productId: product.id || product.name, mediaIndex: 0, event: eventName, details });
+    } catch (e) {}
+  }, [product]);
 
   useEffect(() => {
     // Start loading video immediately on mount for autoplay
@@ -842,14 +930,19 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         setIsVisible(entry.isIntersecting);
         
         // If the card becomes visible, ensure the video element is loaded to enable instant playback
-        if (entry.isIntersecting && videoRef.current && videoState !== 'loaded') {
-          try { videoRef.current.load(); } catch (e) { /* ignore */ }
+        if (entry.isIntersecting && videoRef.current) {
+          try {
+            // Prefer aggressive preload/play on visibility to make playback instant
+            try { videoRef.current.preload = 'auto'; } catch (e) {}
+            if (videoState !== 'loaded') {
+              try { videoRef.current.load(); } catch (e) { /* ignore */ }
+            }
+            try { videoRef.current.play().catch(() => {}); } catch (e) {}
+          } catch (err) { /* ignore */ }
         }
 
-        if (!entry.isIntersecting && videoRef.current && videoState === 'loaded') {
-          videoRef.current.pause();
-        } else if (entry.isIntersecting && videoRef.current && videoState === 'loaded') {
-          videoRef.current.play();
+        if (!entry.isIntersecting && videoRef.current) {
+          try { videoRef.current.pause(); } catch (e) {}
         }
       },
       { threshold: 0.2, rootMargin: '50px' }
@@ -874,11 +967,18 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
 
   const handleVideoLoad = useCallback(() => {
     setVideoState('loaded');
-  }, []);
+    try { logMediaMetric(product.id || product.name || 'unknown', 0, 'card_loadeddata'); } catch (e) {}
+    try { pushDiag('loadeddata'); } catch (e) {}
+  }, [product]);
 
   const handleVideoError = useCallback(() => {
     setVideoState('error');
+    try { pushDiag('error'); } catch (e) {}
   }, []);
+
+  const handleVidEvent = useCallback((name, e) => {
+    try { pushDiag(name, { buffered: e?.target?.buffered?.length ? e.target.buffered.end(0) : null, currentTime: e?.target?.currentTime }); } catch (err) {}
+  }, [pushDiag]);
 
   return (
     <div 
@@ -920,11 +1020,20 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             loop
             muted
             playsInline
-            preload={getPreferredPreload()}
+            // Force aggressive preload for the main card video so it can start instantly when visible
+            preload="auto"
             poster={product.thumbnail}
             fetchpriority="high"
-            onLoadedData={handleVideoLoad}
-            onError={handleVideoError}
+            onLoadStart={(e) => handleVidEvent('loadstart', e)}
+            onLoadedMetadata={(e) => handleVidEvent('loadedmetadata', e)}
+            onProgress={(e) => handleVidEvent('progress', e)}
+            onLoadedData={(e) => { handleVideoLoad(e); handleVidEvent('loadeddata', e); }}
+            onCanPlay={(e) => handleVidEvent('canplay', e)}
+            onCanPlayThrough={(e) => handleVidEvent('canplaythrough', e)}
+            onPlaying={(e) => handleVidEvent('playing', e)}
+            onWaiting={(e) => handleVidEvent('waiting', e)}
+            onStalled={(e) => handleVidEvent('stalled', e)}
+            onError={(e) => { handleVideoError(e); handleVidEvent('error', e); }}
           />
         )}
 
@@ -1832,15 +1941,37 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
   const [mediaLoaded, setMediaLoaded] = useState(false);
   const videoRef = useRef(null);
 
+  // diagnostics helper for detail modal
+  const pushDiag = useCallback((eventName, details = {}) => {
+    try { logVideoDiag({ productId: product?.id || product?.name, mediaIndex: selectedMediaIndex, event: eventName, details }); } catch (e) {}
+  }, [product, selectedMediaIndex]);
+
   useEffect(() => {
     if (product) {
       trackEvent('product_detail_opened', { product: product.name });
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
       if (videoRef.current) {
-        try { videoRef.current.load(); } catch (e) { /* ignore */ }
+        try {
+          // Ensure the detail modal video preloads and starts playing immediately
+          try { videoRef.current.preload = 'auto'; } catch (e) {}
+          try { videoRef.current.load(); } catch (e) {}
+          try { videoRef.current.play().catch(() => {}); } catch (e) {}
+        } catch (err) {}
       }
     }
+
+    // Nettoyage lors de la fermeture du modal
+    return () => {
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+          videoRef.current.currentTime = 0;
+          videoRef.current.src = "";
+          videoRef.current.load();
+        } catch (e) { /* ignore */ }
+      }
+    };
   }, [product]);
 
   if (!product) return null;
@@ -1868,11 +1999,11 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       >
         <div className="relative">
           {/* Main media preview (image or video) - clicking opens fullscreen viewer */}
-          <div
-            onClick={() => openViewer && openViewer(product, selectedMediaIndex)}
-            className="cursor-zoom-in relative w-full h-72 rounded-t-3xl overflow-hidden"
-            role="button"
-            tabIndex={0}
+      <div
+        onClick={() => openViewer && openViewer(product, selectedMediaIndex)}
+        className="cursor-zoom-in relative w-full h-72 rounded-t-3xl overflow-hidden"
+        role="button"
+        tabIndex={0}
           >
             {product.media[selectedMediaIndex] && product.media[selectedMediaIndex].match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
               <>
@@ -1889,10 +2020,20 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                   loop
                   muted
                   playsInline
-                  preload={getPreferredPreload()}
+                  // Use auto preload in the detail modal for instant playback on open
+                  preload="auto"
                   poster={product.thumbnail}
                   fetchpriority="high"
-                  onLoadedData={() => setMediaLoaded(true)}
+                  onLoadStart={(e) => pushDiag('loadstart')}
+                  onLoadedMetadata={(e) => pushDiag('loadedmetadata')}
+                  onProgress={(e) => pushDiag('progress', { buffered: e?.target?.buffered?.length ? e.target.buffered.end(0) : null })}
+                  onLoadedData={(e) => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){}; pushDiag('loadeddata'); }}
+                  onCanPlay={(e) => pushDiag('canplay')}
+                  onCanPlayThrough={(e) => pushDiag('canplaythrough')}
+                  onPlaying={(e) => pushDiag('playing')}
+                  onWaiting={(e) => pushDiag('waiting')}
+                  onStalled={(e) => pushDiag('stalled')}
+                  onError={(e) => { pushDiag('error'); }}
                 />
               </>
             ) : (
@@ -1902,7 +2043,16 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
 
             <button
-              onClick={onClose}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Arrêter la lecture de la vidéo si elle existe
+                if (videoRef.current) {
+                  videoRef.current.pause();
+                  videoRef.current.currentTime = 0;
+                }
+                onClose();
+              }}
               className="absolute top-4 right-4 bg-black/60 backdrop-blur-sm text-white hover:bg-black/80 w-12 h-12 rounded-full transition-all flex items-center justify-center text-2xl z-20 active:scale-90"
             >
               ✕
@@ -1917,17 +2067,64 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
           </div>
 
           {/* Thumbnails / media selector */}
-          <div className="p-4 flex gap-3 overflow-x-auto">
+          <div 
+            className="p-4 flex gap-3 overflow-x-auto hide-scrollbar"
+            role="listbox"
+            aria-label="Sélecteur de médias"
+          >
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
-                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400' : 'border-white/10'} p-0`}
+                onClick={() => { 
+                  setSelectedMediaIndex(idx); 
+                  setMediaLoaded(false); 
+                  if (videoRef.current) {
+                    try { videoRef.current.preload = 'auto'; } catch(e){}
+                    try { videoRef.current.load(); } catch(e){}
+                    try { videoRef.current.play().catch(() => {}); } catch(e){}
+                  }
+                }}
+                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
+                role="option"
+                aria-selected={selectedMediaIndex === idx}
+                tabIndex={0}
               >
                 {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-                  <video src={m} className="w-24 h-16 object-cover video-smooth" muted preload={getPreferredPreload()} playsInline fetchpriority="low" />
+                  // Use poster (product.thumbnail) so the tiny video thumbnails are not black while loading.
+                  <video 
+                    src={m} 
+                    poster={product.thumbnail}
+                    className="w-24 h-16 object-cover video-smooth"
+                    muted={true}
+                    defaultMuted={true}
+                    preload="metadata"
+                    playsInline 
+                    fetchpriority="high"
+                    onPlay={(e) => { 
+                      try { 
+                        e.target.muted = true; 
+                        e.target.defaultMuted = true;
+                        e.target.volume = 0; 
+                      } catch(err){} 
+                    }}
+                    onLoadedMetadata={(e) => {
+                      try {
+                        const v = e.target;
+                        v.muted = true;
+                        v.defaultMuted = true;
+                        v.volume = 0;
+                        const w = v.videoWidth || 0;
+                        const h = v.videoHeight || 0;
+                        if (h > w) v.classList.add('is-portrait');
+                        else v.classList.remove('is-portrait');
+                        // thumbnail loaded
+                        try { logVideoDiag({ productId: product.id || product.name, mediaIndex: idx, event: 'thumb_loadedmetadata' }); } catch(e){}
+                      } catch (err) {}
+                    }}
+                    onError={(e) => { try { logVideoDiag({ productId: product.id || product.name, mediaIndex: idx, event: 'thumb_error' }); } catch(e){} }}
+                  />
                 ) : (
                   <img src={m} className="w-24 h-16 object-cover" loading="lazy" />
                 )}
@@ -2002,6 +2199,22 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const containerRef = useRef(null);
   const startX = useRef(0);
   const deltaX = useRef(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const dragThreshold = 0.15; // 15% width for swipe trigger
+  const [isControlsVisible, setIsControlsVisible] = useState(true);
+  const controlsTimerRef = useRef(null);
+
+  // Gérer l'affichage/masquage automatique des contrôles
+  const resetControlsTimer = useCallback(() => {
+    if (controlsTimerRef.current) {
+      clearTimeout(controlsTimerRef.current);
+    }
+    setIsControlsVisible(true);
+    controlsTimerRef.current = setTimeout(() => {
+      setIsControlsVisible(false);
+    }, 2500);
+  }, []);
 
   useEffect(() => {
     setIndex(startIndex || 0);
@@ -2009,13 +2222,23 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
 
   useEffect(() => {
     if (!isOpen) return;
+    
     const onKey = (e) => {
       if (e.key === 'ArrowRight') setIndex(i => Math.min(i + 1, (product?.media?.length || 1) - 1));
       if (e.key === 'ArrowLeft') setIndex(i => Math.max(i - 1, 0));
       if (e.key === 'Escape') onClose && onClose();
+      resetControlsTimer();
     };
+
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    resetControlsTimer();
+
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      if (controlsTimerRef.current) {
+        clearTimeout(controlsTimerRef.current);
+      }
+    };
   }, [isOpen, product, onClose]);
 
   useEffect(() => {
@@ -2028,7 +2251,9 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
       if (src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
         const v = document.createElement('video');
         v.src = src;
-        v.preload = 'auto';
+        // Preload aggressively neighbours for smooth viewer experience
+        v.preload = (index === i) ? 'auto' : 'metadata';
+        try { logVideoDiag({ productId: product.id || product.name, mediaIndex: i, event: 'preload_attempt', details: { preload: v.preload } }); } catch(e){}
       } else {
         const img = new Image(); img.src = src;
       }
@@ -2040,39 +2265,129 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const goNext = () => setIndex(i => Math.min(i + 1, product.media.length - 1));
   const goPrev = () => setIndex(i => Math.max(i - 1, 0));
 
-  const handleTouchStart = (e) => { startX.current = e.touches[0].clientX; deltaX.current = 0; };
-  const handleTouchMove = (e) => { deltaX.current = e.touches[0].clientX - startX.current; };
-  const handleTouchEnd = () => {
-    if (Math.abs(deltaX.current) > 50) {
-      if (deltaX.current < 0) goNext(); else goPrev();
+  const handleTouchStart = (e) => {
+    setIsDragging(true);
+    startX.current = e.touches[0].clientX;
+    deltaX.current = 0;
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    deltaX.current = e.touches[0].clientX - startX.current;
+    
+    // Calculate offset as percentage of container width
+    const containerWidth = containerRef.current?.clientWidth || 1;
+    const offsetPercent = (deltaX.current / containerWidth);
+    
+    // Limit drag to next/prev media with resistance at ends
+    const hasNext = index < (product.media.length - 1);
+    const hasPrev = index > 0;
+    
+    // Apply resistance using a cubic function for smoother feel
+    if ((!hasNext && offsetPercent < 0) || (!hasPrev && offsetPercent > 0)) {
+      const resistance = 0.15;
+      const resistedOffset = Math.sign(offsetPercent) * Math.pow(Math.abs(offsetPercent), 3) * resistance;
+      setDragOffset(resistedOffset);
+    } else {
+      // Add some subtle resistance even within bounds for better feel
+      const withinBoundsResistance = 0.85;
+      setDragOffset(offsetPercent * withinBoundsResistance);
     }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    
+    // If movement exceeds threshold, change media
+    if (Math.abs(dragOffset) > dragThreshold) {
+      if (dragOffset < 0) goNext(); else goPrev();
+    }
+    
+    // Reset offset
+    setDragOffset(0);
     deltaX.current = 0;
   };
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] bg-black/95 flex items-center justify-center" onClick={onClose}>
       <div
         ref={containerRef}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className="w-full max-w-4xl max-h-[90vh] relative flex items-center justify-center"
+        onTouchCancel={handleTouchEnd}
+        className="w-full h-full relative flex items-center justify-center"
       >
-        <button onClick={onClose} className="absolute top-4 right-4 z-40 text-white text-3xl">✕</button>
+        {/* En-tête avec dégradé et bouton de fermeture */}
+        <div className="fixed top-0 left-0 right-0 h-24 z-50 pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 to-transparent" />
+          <button 
+            onClick={(e) => { e.stopPropagation(); onClose(); }}
+            className="absolute top-4 right-4 glass-dark hover:bg-white/10 text-white/90 hover:text-white w-10 h-10 rounded-full flex items-center justify-center transition-all active:scale-95 backdrop-blur-lg border border-white/10 pointer-events-auto"
+            aria-label="Fermer"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-5 h-5">
+              <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
 
-        <button onClick={() => { goPrev(); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-40 text-white text-4xl p-2">◀</button>
-        <button onClick={() => { goNext(); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-40 text-white text-4xl p-2">▶</button>
+        {index > 0 && (
+          <button 
+            onClick={() => { goPrev(); }} 
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-40 bg-black/40 hover:bg-black/60 backdrop-blur text-white w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
+          >◀</button>
+        )}
+        {index < product.media.length - 1 && (
+          <button 
+            onClick={() => { goNext(); }} 
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-40 bg-black/40 hover:bg-black/60 backdrop-blur text-white w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-95"
+          >▶</button>
+        )}
 
         <div className="w-full overflow-hidden rounded-2xl">
           {product.media.map((m, idx) => (
             <div
               key={m + idx}
-              style={{ transform: `translateX(${100 * (idx - index)}%)`, transition: 'transform 300ms ease, opacity 300ms ease' }}
-              className="absolute inset-0 w-full h-full flex items-center justify-center"
+              style={{
+                transform: `translateX(${100 * (idx - index) + (dragOffset * 100)}%)`,
+                transition: isDragging ? 'none' : 'all 400ms cubic-bezier(0.4, 0, 0.2, 1)',
+                opacity: Math.abs(idx - index) <= 1 ? 1 : 0,
+                scale: isDragging ? '0.98' : '1',
+                filter: isDragging ? 'brightness(0.9)' : 'brightness(1)'
+              }}
+              className="absolute inset-0 w-full h-full flex items-center justify-center touch-none select-none"
             >
               {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-                <video src={m} className="w-full max-h-[80vh] object-contain video-smooth" autoPlay muted controls playsInline preload={getPreferredPreload()} fetchpriority={index === idx ? 'high' : 'low'} />
+                <video
+                  src={m}
+                  className="w-full max-h-[80vh] object-contain video-smooth"
+                  autoPlay
+                  muted={true}
+                  defaultMuted={true}
+                  controls
+                  playsInline
+                    // Preload aggressively for the active media to reduce startup delay
+                    preload={index === idx ? 'auto' : 'metadata'}
+                    fetchpriority={index === idx ? 'high' : 'low'}
+                  onLoadedData={(e) => { 
+                    try { 
+                      // Ensure video is muted
+                      e.target.muted = true;
+                      e.target.defaultMuted = true;
+                      e.target.volume = 0;
+                      logMediaMetric(product.id || product.name || 'unknown', idx, 'viewer_loadeddata'); 
+                    } catch(e){} 
+                  }}
+                  onPlay={(e) => {
+                    try {
+                      // Double check muting on play
+                      e.target.muted = true;
+                      e.target.volume = 0;
+                    } catch(e){}
+                  }}
+                />
               ) : (
                 <img src={m} loading="lazy" className="w-full max-h-[80vh] object-contain" />
               )}
@@ -2080,10 +2395,32 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
           ))}
         </div>
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-40 flex gap-2">
-          {product.media.map((m, idx) => (
-            <button key={m + idx} onClick={() => setIndex(idx)} className={`w-2 h-2 rounded-full ${idx === index ? 'bg-white' : 'bg-white/30'}`} />
-          ))}
+        {/* Indicateurs de médias et barre de contrôle en bas */}
+        <div className={`absolute bottom-0 left-0 right-0 z-40 transition-opacity duration-300 ${
+          isControlsVisible ? 'opacity-100' : 'opacity-0'
+        }`}>
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent pointer-events-none" />
+          <div className="relative p-4 flex flex-col items-center">
+            {/* Points de navigation */}
+            <div className="flex items-center gap-2 mb-2">
+              {product.media.map((m, idx) => (
+                <button 
+                  key={m + idx} 
+                  onClick={(e) => { e.stopPropagation(); setIndex(idx); }}
+                  className={`w-1.5 h-1.5 rounded-full transition-all ${
+                    idx === index 
+                      ? 'bg-white scale-150' 
+                      : 'bg-white/40 hover:bg-white/60'
+                  }`}
+                  title={`Média ${idx + 1}`}
+                />
+              ))}
+            </div>
+            {/* Info sur le média actuel */}
+            <div className="text-white/60 text-xs font-medium">
+              {index + 1} / {product.media.length}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2147,8 +2484,58 @@ const App = () => {
     setViewerOpen(false);
     setViewerProduct(null);
     setViewerStartIndex(0);
+    setSelectedProduct(null); // Also close detail modal when closing viewer
     document.body.style.overflow = 'unset';
     trackEvent('viewer_closed');
+  }, []);
+
+  // Diagnostics UI updater: periodically refresh the debug panel content
+  useEffect(() => {
+    let id;
+    const el = () => document.getElementById('tangerine-debug-list');
+    const update = () => {
+      try {
+        const panel = el();
+        if (!panel) return;
+        const arr = window.__videoDiagnostics || [];
+        if (arr.length === 0) panel.textContent = 'No diagnostics yet.';
+        else {
+          const last = arr.slice(-150).map(i => `${new Date(i.ts).toLocaleTimeString()} [${i.productId||'?' }#${i.mediaIndex||0}] ${i.event} ${i.details?JSON.stringify(i.details):''}`).join('\n');
+          panel.textContent = last;
+        }
+      } catch (e) {}
+    };
+    id = setInterval(update, 800);
+    // wire the network check button
+    const btn = document.getElementById('run-network-check');
+    const runCheck = async () => {
+      try {
+        const urls = (PRODUCTS || []).flatMap(p => p.media || []);
+        for (const u of urls) {
+          const start = Date.now();
+          try {
+            // Try HEAD first (may be blocked by CORS)
+            const headResp = await fetch(u, { method: 'HEAD', mode: 'cors' });
+            logVideoDiag({ productId: 'network-check', event: 'head', url: u, status: headResp.status, duration: Date.now()-start });
+          } catch (headErr) {
+            logVideoDiag({ productId: 'network-check', event: 'head_error', url: u, error: String(headErr) });
+          }
+          try {
+            // Try ranged GET for first KB
+            const rstart = Date.now();
+            const rangeResp = await fetch(u, { method: 'GET', headers: { Range: 'bytes=0-1023' }, mode: 'cors' });
+            logVideoDiag({ productId: 'network-check', event: 'range', url: u, status: rangeResp.status, duration: Date.now()-rstart });
+          } catch (rangeErr) {
+            logVideoDiag({ productId: 'network-check', event: 'range_error', url: u, error: String(rangeErr) });
+          }
+        }
+      } catch (e) { logVideoDiag({ productId: 'network-check', event: 'run_error', error: String(e) }); }
+    };
+    if (btn) {
+      btn.addEventListener('click', runCheck);
+    }
+
+    return () => { clearInterval(id); if (btn) btn.removeEventListener('click', runCheck); };
   }, []);
 
   useEffect(() => {
@@ -2181,6 +2568,10 @@ const App = () => {
           const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
           const isFast = nav ? (nav.saveData ? false : (nav.effectiveType || '').toLowerCase().includes('4g')) : true;
           setShowParticles(window.innerWidth > 700 && isFast);
+          // Add a low-data CSS mode to reduce heavy visual effects for slow connections
+          const isLowData = nav ? (nav.saveData || !((nav.effectiveType||'').toLowerCase().includes('4g'))) : false;
+          if (isLowData) document.documentElement.classList.add('low-data');
+          else document.documentElement.classList.remove('low-data');
         } catch (e) { setShowParticles(window.innerWidth > 700); }
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -2446,6 +2837,20 @@ const App = () => {
     <div className={bgClasses}>
   {theme === 'dark' && showParticles && <ParticlesBackground />}
 
+      {/* Diagnostics toggle (small) */}
+      <button
+        id="tangerine-debug-toggle"
+        onClick={() => {
+          const el = document.getElementById('tangerine-debug-panel');
+          if (!el) return;
+          el.style.display = el.style.display === 'none' ? 'block' : 'none';
+        }}
+        className="fixed left-4 bottom-24 z-50 bg-black/60 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg"
+        title="Diagnostics"
+      >
+        🐞
+      </button>
+
       <ThemeToggle theme={theme} onToggle={handleThemeToggle} cartOpen={isCartOpen} />
 
       <header className="relative z-10 max-w-7xl mx-auto pb-4 px-4 telegram-header">
@@ -2600,6 +3005,22 @@ const App = () => {
       />
       
       <Confetti trigger={confettiTrigger} />
+      {/* Diagnostics overlay (hidden by default) */}
+      <div id="tangerine-debug-panel" style={{display: 'none'}} className="fixed right-4 top-16 z-[100] w-80 max-h-[70vh] overflow-auto glass-dark rounded-2xl p-3 text-xs">
+        <div className="flex items-center justify-between mb-2">
+          <strong className="text-sm">Diagnostics</strong>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { try { window.downloadVideoDiagnostics(); } catch(e){} }} className="bg-green-500 text-white px-2 py-1 rounded">Export</button>
+            <button onClick={() => { try { localStorage.removeItem('tangerine_video_diagnostics'); window.__videoDiagnostics = []; alert('Cleared'); } catch(e){} }} className="bg-red-500 text-white px-2 py-1 rounded">Clear</button>
+          </div>
+        </div>
+        <div className="mb-2">
+          <button id="run-network-check" className="w-full bg-orange-500 text-white py-2 rounded">Run network checks</button>
+        </div>
+        <div id="tangerine-debug-list" style={{whiteSpace: 'pre-wrap', fontFamily: 'monospace'}}>
+          Loading diagnostics...
+        </div>
+      </div>
     </div>
   );
 };
