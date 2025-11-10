@@ -8,16 +8,30 @@
 <meta name="theme-color" content="#1e293b">
 <meta name="color-scheme" content="dark">
 
-<!-- Privacy-friendly analytics by Plausible -->
-<script defer data-domain="YOUR_DOMAIN_HERE" src="https://plausible.io/js/script.js"></script>
+<!-- Privacy-friendly analytics by Plausible (lazy-init if domain not set) -->
+<script>
+  (function(){
+    var domain = 'YOUR_DOMAIN_HERE';
+    if (domain && domain !== 'YOUR_DOMAIN_HERE') {
+      var s = document.createElement('script');
+      s.defer = true; s.setAttribute('data-domain', domain);
+      s.src = 'https://plausible.io/js/script.js';
+      window.addEventListener('load', function(){ document.head.appendChild(s); });
+    }
+  })();
+</script>
 
-<!-- Microsoft Clarity Analytics -->
+<!-- Microsoft Clarity Analytics (deferred to after load for performance) -->
 <script type="text/javascript">
-    (function(c,l,a,r,i,t,y){
-        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-    })(window, document, "clarity", "script", "u2rza6fjql");
+  window.addEventListener('load', function(){
+    try{
+      (function(c,l,a,r,i,t,y){
+          c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+      })(window, document, "clarity", "script", "u2rza6fjql");
+    }catch(e){}
+  });
 </script>
 
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -565,12 +579,23 @@ window.downloadMediaMetrics = () => {
   } catch (e) { console.warn('export failed', e); }
 };
 
-// Register Service Worker (cautious - only when supported and site served over https or localhost)
+// Register Service Worker only if served over https or localhost AND sw.js is present
 if ('serviceWorker' in navigator) {
   try {
-    navigator.serviceWorker.register('/sw.js').then(reg => {
-      console.info('ServiceWorker registered', reg.scope);
-    }).catch(err => console.warn('SW register failed', err));
+    var isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    if (isSecure) {
+      fetch('/sw.js', { method: 'HEAD' })
+        .then(function(res){
+          if (res && (res.ok || res.status === 200)) {
+            navigator.serviceWorker.register('/sw.js').then(function(reg){
+              console.info('ServiceWorker registered', reg.scope);
+            }).catch(function(err){ console.warn('SW register failed', err); });
+          } else {
+            console.info('SW not found, skipping registration');
+          }
+        })
+        .catch(function(){ console.info('SW check failed, skipping registration'); });
+    }
   } catch (e) { console.warn('SW registration exception', e); }
 }
 
@@ -996,10 +1021,12 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             if (!isCurrentMount) return;
             const loadTime = performance.now() - loadStartTime;
             setVideoState('loaded');
+            pushDiag('load_success', { loadTime });
           })
           .catch(error => {
             if (!isCurrentMount) return;
             setVideoState('error');
+            pushDiag('load_error', { error: error.message });
           });
       }
       
@@ -1019,6 +1046,7 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         if (entry.isIntersecting) {
           videoRef.current.play().catch((error) => {
             console.warn('Video play error:', error);
+            pushDiag('play_error_after_visible');
           });
         } else {
           videoRef.current.pause();
@@ -2013,44 +2041,22 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    if (!product) return;
-
-    if (selectedMediaIndex === 0) {
+    if (product) {
       trackEvent('product_detail_opened', { product: product.name });
-    } else {
-      trackEvent('product_media_changed', { 
-        product: product.name, 
-        mediaIndex: selectedMediaIndex 
-      });
-    }
-    
-    setMediaLoaded(false);
-    
-    // Force immediate video load and play using VideoManager
-    const src = product.media[selectedMediaIndex];
-    if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
-      window.videoManager.prepareVideo(videoRef.current, src)
-        .then(() => {
-          setMediaLoaded(true);
-          try { 
-            logMediaMetric(
-              product.id || product.name || 'unknown',
-              selectedMediaIndex,
-              'detail_load_success'
-            ); 
-          } catch(e){}
-        })
-        .catch(error => {
-          try { 
-            logMediaMetric(
-              product.id || product.name || 'unknown',
-              selectedMediaIndex,
-              'detail_load_error',
-              { error: error.message }
-            ); 
-          } catch(e){}
-        });
-    }
+      setSelectedMediaIndex(0);
+      setMediaLoaded(false);
+      
+      // Force immediate video load and play using VideoManager
+      const src = product.media[0];
+      if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
+        window.videoManager.prepareVideo(videoRef.current, src)
+          .then(() => {
+            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_success'); } catch(e){}
+          })
+          .catch(error => {
+            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_error', { error: error.message }); } catch(e){}
+          });
+      }
     }
 
     // Nettoyage lors de la fermeture du modal
@@ -2064,7 +2070,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
         } catch (e) { /* ignore */ }
       }
     };
-  }, [product, selectedMediaIndex]);
+  }, [product]);
 
   if (!product) return null;
 
@@ -2107,8 +2113,6 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                 {/* Video with forced mobile autoplay */}
                 <video
                   ref={videoRef}
-                  key={selectedMediaIndex} // Force remount on media change
-                  src={product.media[selectedMediaIndex]}
                   className="relative w-full h-72 object-cover video-smooth"
                   loop
                   muted
@@ -2182,28 +2186,8 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => {
-                  setSelectedMediaIndex(idx);
-                  setMediaLoaded(false);
-                  if (videoRef.current) {
-                    videoRef.current.pause();
-                    videoRef.current.currentTime = 0;
-                    videoRef.current.src = product.media[idx];
-                    try {
-                      videoRef.current.load();
-                      window.videoManager.prepareVideo(videoRef.current, product.media[idx])
-                        .then(() => setMediaLoaded(true))
-                        .catch(error => console.warn('Media switch failed:', error));
-                    } catch(e) {
-                      console.warn('Media load error:', e);
-                    }
-                  }
-                }}
-                className={`relative rounded-xl overflow-hidden border-2 ${
-                  selectedMediaIndex === idx 
-                    ? 'border-orange-400 ring-2 ring-orange-400/50 scale-105' 
-                    : 'border-white/10 hover:border-white/30'
-                } p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
+                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
+                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
                 role="option"
@@ -3092,7 +3076,17 @@ const App = () => {
 
 ReactDOM.render(<App />, document.getElementById('root'));
 </script>
-<script data-goatcounter="https://tangerine1890.goatcounter.com/count"
-        async src="//gc.zgo.at/count.js"></script>
+<script>
+  // Lazy-load GoatCounter after page load to reduce JS cost on startup
+  window.addEventListener('load', function(){
+    try{
+      var s = document.createElement('script');
+      s.async = true;
+      s.src = 'https://gc.zgo.at/count.js';
+      s.setAttribute('data-goatcounter','https://tangerine1890.goatcounter.com/count');
+      document.body.appendChild(s);
+    }catch(e){}
+  });
+</script>
 </body>
 </html>
