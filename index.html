@@ -611,7 +611,7 @@ const PRODUCTS = [
     media: [
       'https://file.garden/aRCOOh-cGER2BR_t/IMG_1798%205%20(1)%20(1).mp4',
       'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204.mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/p7wuqu.mp4" autoplay muted></video>'
+      'https://file.garden/aRCOOh-cGER2BR_t/PICALINOAUDIO.mp4'
     ], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g1" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23f59e0b;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f97316;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g1)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🥭%3C/text%3E%3C/svg%3E',
     desc: 'Profil tropical intense avec notes de mangue fraîche et fruits exotiques. Effet énergisant et créatif.' 
@@ -996,12 +996,10 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             if (!isCurrentMount) return;
             const loadTime = performance.now() - loadStartTime;
             setVideoState('loaded');
-            pushDiag('load_success', { loadTime });
           })
           .catch(error => {
             if (!isCurrentMount) return;
             setVideoState('error');
-            pushDiag('load_error', { error: error.message });
           });
       }
       
@@ -1021,7 +1019,6 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         if (entry.isIntersecting) {
           videoRef.current.play().catch((error) => {
             console.warn('Video play error:', error);
-            pushDiag('play_error_after_visible');
           });
         } else {
           videoRef.current.pause();
@@ -2016,22 +2013,44 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    if (product) {
+    if (!product) return;
+
+    if (selectedMediaIndex === 0) {
       trackEvent('product_detail_opened', { product: product.name });
-      setSelectedMediaIndex(0);
-      setMediaLoaded(false);
-      
-      // Force immediate video load and play using VideoManager
-      const src = product.media[0];
-      if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
-        window.videoManager.prepareVideo(videoRef.current, src)
-          .then(() => {
-            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_success'); } catch(e){}
-          })
-          .catch(error => {
-            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_error', { error: error.message }); } catch(e){}
-          });
-      }
+    } else {
+      trackEvent('product_media_changed', { 
+        product: product.name, 
+        mediaIndex: selectedMediaIndex 
+      });
+    }
+    
+    setMediaLoaded(false);
+    
+    // Force immediate video load and play using VideoManager
+    const src = product.media[selectedMediaIndex];
+    if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
+      window.videoManager.prepareVideo(videoRef.current, src)
+        .then(() => {
+          setMediaLoaded(true);
+          try { 
+            logMediaMetric(
+              product.id || product.name || 'unknown',
+              selectedMediaIndex,
+              'detail_load_success'
+            ); 
+          } catch(e){}
+        })
+        .catch(error => {
+          try { 
+            logMediaMetric(
+              product.id || product.name || 'unknown',
+              selectedMediaIndex,
+              'detail_load_error',
+              { error: error.message }
+            ); 
+          } catch(e){}
+        });
+    }
     }
 
     // Nettoyage lors de la fermeture du modal
@@ -2045,7 +2064,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
         } catch (e) { /* ignore */ }
       }
     };
-  }, [product]);
+  }, [product, selectedMediaIndex]);
 
   if (!product) return null;
 
@@ -2088,6 +2107,8 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                 {/* Video with forced mobile autoplay */}
                 <video
                   ref={videoRef}
+                  key={selectedMediaIndex} // Force remount on media change
+                  src={product.media[selectedMediaIndex]}
                   className="relative w-full h-72 object-cover video-smooth"
                   loop
                   muted
@@ -2161,8 +2182,28 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
-                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
+                onClick={() => {
+                  setSelectedMediaIndex(idx);
+                  setMediaLoaded(false);
+                  if (videoRef.current) {
+                    videoRef.current.pause();
+                    videoRef.current.currentTime = 0;
+                    videoRef.current.src = product.media[idx];
+                    try {
+                      videoRef.current.load();
+                      window.videoManager.prepareVideo(videoRef.current, product.media[idx])
+                        .then(() => setMediaLoaded(true))
+                        .catch(error => console.warn('Media switch failed:', error));
+                    } catch(e) {
+                      console.warn('Media load error:', e);
+                    }
+                  }
+                }}
+                className={`relative rounded-xl overflow-hidden border-2 ${
+                  selectedMediaIndex === idx 
+                    ? 'border-orange-400 ring-2 ring-orange-400/50 scale-105' 
+                    : 'border-white/10 hover:border-white/30'
+                } p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
                 role="option"
@@ -3055,4 +3096,3 @@ ReactDOM.render(<App />, document.getElementById('root'));
         async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
-
