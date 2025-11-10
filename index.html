@@ -27,140 +27,10 @@
 <!-- Improve connection for third-party media hosts to speed up video loads -->
 <link rel="preconnect" href="https://files.catbox.moe" crossorigin>
 <link rel="preconnect" href="https://file.garden" crossorigin>
-<!-- Preload key assets -->
+<!-- Preload the Tropicali example videos to reduce first-play delay -->
+<link rel="preload" as="video" href="https://files.catbox.moe/p7wuqu.mp4" type="video/mp4">
+<link rel="preload" as="video" href="https://file.garden/aRCOOh-cGER2BR_t/copy_A0E9A19D-D622-46CF-B7FC-ACC032A9499F%20(1).mp4" type="video/mp4">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;900&display=swap" rel="stylesheet">
-
-<!-- Global VideoManager for optimized loading -->
-<script>
-class VideoManager {
-  constructor(maxConcurrent = 2) {
-    this.maxConcurrent = maxConcurrent;
-    this.loading = new Set();
-    this.queue = [];
-    this.retryDelays = [1000, 2000, 4000, 8000]; // Exponential backoff
-  }
-
-  async load(videoElement, src, options = {}) {
-    const key = src;
-    if (this.loading.has(key)) {
-      return new Promise((resolve) => {
-        this.queue.push({ videoElement, src, options, resolve });
-      });
-    }
-
-    if (this.loading.size >= this.maxConcurrent) {
-      return new Promise((resolve) => {
-        this.queue.push({ videoElement, src, options, resolve });
-      });
-    }
-
-    return this._loadVideo(videoElement, src, options);
-  }
-
-  async _loadVideo(videoElement, src, options = {}, retryCount = 0) {
-    const key = src;
-    this.loading.add(key);
-
-    try {
-      videoElement.preload = options.preload || 'auto';
-      if (options.poster) videoElement.poster = options.poster;
-      videoElement.src = src;
-
-      // Wait for metadata first
-      await new Promise((resolve, reject) => {
-        const onMetadata = () => {
-          videoElement.removeEventListener('loadedmetadata', onMetadata);
-          videoElement.removeEventListener('error', onError);
-          resolve();
-        };
-        const onError = () => {
-          videoElement.removeEventListener('loadedmetadata', onMetadata);
-          videoElement.removeEventListener('error', onError);
-          reject(videoElement.error);
-        };
-        videoElement.addEventListener('loadedmetadata', onMetadata);
-        videoElement.addEventListener('error', onError);
-
-        // Start loading
-        try { videoElement.load(); } catch (e) { reject(e); }
-      });
-
-      // Then wait for enough buffer
-      await new Promise((resolve, reject) => {
-        const check = () => {
-          try {
-            const buffered = videoElement.buffered;
-            if (buffered.length > 0) {
-              const bufferedSeconds = buffered.end(0) - buffered.start(0);
-              if (bufferedSeconds >= (options.minBuffer || 1)) {
-                resolve();
-                return true;
-              }
-            }
-          } catch (e) {}
-          return false;
-        };
-
-        if (check()) return;
-
-        const onProgress = () => {
-          if (check()) {
-            cleanup();
-          }
-        };
-
-        const onError = () => {
-          cleanup();
-          reject(videoElement.error);
-        };
-
-        const cleanup = () => {
-          videoElement.removeEventListener('progress', onProgress);
-          videoElement.removeEventListener('error', onError);
-        };
-
-        videoElement.addEventListener('progress', onProgress);
-        videoElement.addEventListener('error', onError);
-      });
-
-    } catch (error) {
-      // Retry with backoff if we have retries left
-      if (retryCount < this.retryDelays.length) {
-        await new Promise(r => setTimeout(r, this.retryDelays[retryCount]));
-        return this._loadVideo(videoElement, src, options, retryCount + 1);
-      }
-      throw error;
-    } finally {
-      this.loading.delete(key);
-      this._processQueue();
-    }
-  }
-
-  _processQueue() {
-    if (this.queue.length === 0) return;
-    if (this.loading.size >= this.maxConcurrent) return;
-
-    const next = this.queue.shift();
-    if (next) {
-      this._loadVideo(next.videoElement, next.src, next.options)
-        .then(next.resolve)
-        .catch(next.resolve); // Resolve even on error to continue queue
-    }
-  }
-
-  unload(videoElement) {
-    try {
-      const src = videoElement.src;
-      this.loading.delete(src);
-      videoElement.removeAttribute('src');
-      videoElement.load();
-    } catch (e) {}
-  }
-}
-
-// Global video manager instance
-window.videoManager = new VideoManager(2);
-</script>
 <style>
   * { font-family: 'Poppins', system-ui, sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
   
@@ -558,229 +428,16 @@ window.videoManager = new VideoManager(2);
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-// Quality Management System
-class QualityManager {
-  constructor() {
-    this._quality = this._getInitialQuality();
-    this._listeners = new Set();
-    this._setupNetworkListener();
-    this._lastUpgrade = 0;
-    this.UPGRADE_COOLDOWN = 10000; // 10s between quality upgrades
-  }
-
-  _getInitialQuality() {
-    try {
-      const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      const stored = localStorage.getItem('video_quality');
-      
-      // Respect user preference if set
-      if (stored) return stored;
-      
-      // Otherwise determine from network
-      if (nav) {
-        if (nav.saveData) return 'low';
-        const t = (nav.effectiveType || '').toLowerCase();
-        if (t.includes('4g') || t.includes('wifi')) return 'auto';
-        return 'low';
-      }
-    } catch (e) {}
-    return 'auto';
-  }
-
-  _setupNetworkListener() {
-    try {
-      const nav = navigator.connection;
-      if (nav) {
-        nav.addEventListener('change', () => {
-          const newQuality = this._getInitialQuality();
-          if (newQuality !== this._quality) {
-            this._quality = newQuality;
-            this._notifyListeners();
-          }
-        });
-      }
-    } catch (e) {}
-  }
-
-  _notifyListeners() {
-    this._listeners.forEach(listener => {
-      try { listener(this._quality); } catch (e) {}
-    });
-  }
-
-  subscribe(listener) {
-    this._listeners.add(listener);
-    return () => this._listeners.delete(listener);
-  }
-
-  getCurrentQuality() {
-    return this._quality;
-  }
-
-  setQuality(quality) {
-    if (this._quality !== quality) {
-      this._quality = quality;
-      try {
-        localStorage.setItem('video_quality', quality);
-      } catch (e) {}
-      this._notifyListeners();
-    }
-  }
-
-  // Get appropriate video URL based on quality setting
-  getOptimalVideoUrl(videoUrls) {
-    if (!videoUrls || !Array.isArray(videoUrls)) return null;
-    
-    const quality = this._quality;
-    if (quality === 'low' && videoUrls.length > 1) {
-      return videoUrls[1]; // Use low quality version if available
-    }
-    return videoUrls[0]; // Default to high quality
-  }
-
-  // Check if we should attempt upgrading video quality
-  shouldUpgradeQuality(currentQuality) {
-    if (currentQuality === 'high') return false;
-    const now = Date.now();
-    if (now - this._lastUpgrade < this.UPGRADE_COOLDOWN) return false;
-    
-    try {
-      const nav = navigator.connection;
-      if (nav) {
-        if (nav.saveData) return false;
-        const t = nav.effectiveType?.toLowerCase() || '';
-        return t.includes('4g') || t.includes('wifi');
-      }
-    } catch (e) {}
-    
-    return false;
-  }
-
-  // Mark quality upgrade attempt
-  markUpgradeAttempt() {
-    this._lastUpgrade = Date.now();
-  }
-}
-
-// Performance and Error Tracking System
-class PerformanceTracker {
-  constructor() {
-    this._metrics = new Map();
-    this._errors = new Map();
-    this._lastReport = Date.now();
-    this.REPORT_INTERVAL = 60000; // Report every minute
-    this._startPeriodicReport();
-  }
-
-  trackLoadTime(videoId, loadTime, quality) {
-    if (!this._metrics.has(videoId)) {
-      this._metrics.set(videoId, { loads: [], errors: 0 });
-    }
-    
-    const metric = this._metrics.get(videoId);
-    metric.loads.push({ time: loadTime, quality, timestamp: Date.now() });
-    
-    // Keep only last 10 measurements
-    if (metric.loads.length > 10) {
-      metric.loads.shift();
-    }
-  }
-
-  trackError(videoId, error, quality) {
-    if (!this._errors.has(videoId)) {
-      this._errors.set(videoId, []);
-    }
-    
-    const errors = this._errors.get(videoId);
-    errors.push({ 
-      error: error.toString(),
-      quality,
-      timestamp: Date.now() 
-    });
-    
-    // Keep only last 5 errors
-    if (errors.length > 5) {
-      errors.shift();
-    }
-
-    // Also increment error count in metrics
-    if (this._metrics.has(videoId)) {
-      this._metrics.get(videoId).errors++;
-    }
-  }
-
-  getVideoMetrics(videoId) {
-    if (!this._metrics.has(videoId)) return null;
-    
-    const metric = this._metrics.get(videoId);
-    const recentLoads = metric.loads.slice(-5);
-    
-    return {
-      avgLoadTime: recentLoads.reduce((sum, m) => sum + m.time, 0) / recentLoads.length,
-      errorRate: metric.errors / (recentLoads.length || 1),
-      recentErrors: this._errors.get(videoId) || []
-    };
-  }
-
-  getGlobalMetrics() {
-    let totalLoads = 0;
-    let totalLoadTime = 0;
-    let totalErrors = 0;
-    
-    for (const [id, metric] of this._metrics) {
-      totalLoads += metric.loads.length;
-      totalLoadTime += metric.loads.reduce((sum, m) => sum + m.time, 0);
-      totalErrors += metric.errors;
-    }
-
-    return {
-      avgLoadTime: totalLoads ? totalLoadTime / totalLoads : 0,
-      errorRate: totalLoads ? totalErrors / totalLoads : 0,
-      totalVideos: this._metrics.size,
-      totalErrors
-    };
-  }
-
-  _startPeriodicReport() {
-    setInterval(() => {
-      const metrics = this.getGlobalMetrics();
-      console.info('[Video Performance Report]', {
-        ...metrics,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Log if error rate is high
-      if (metrics.errorRate > 0.1) { // >10% error rate
-        console.warn('[High Error Rate]', {
-          errorRate: metrics.errorRate,
-          totalErrors: metrics.totalErrors,
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      // Log if load times are high
-      if (metrics.avgLoadTime > 3000) { // >3s average load
-        console.warn('[Slow Load Times]', {
-          avgLoadTime: metrics.avgLoadTime,
-          timestamp: new Date().toISOString()
-        });
-      }
-    }, this.REPORT_INTERVAL);
-  }
-}
-
-// Global instances
-const qualityManager = new QualityManager();
-const performanceTracker = new PerformanceTracker();
-
-// Network-aware preload strategy
+// Prefered preload based on network conditions (mobile-friendly)
 const getPreferredPreload = () => {
   try {
     const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     if (nav) {
+      // If user enabled save-data, be conservative
       if (nav.saveData) return 'metadata';
       const t = (nav.effectiveType || '').toLowerCase();
       if (t.includes('4g') || t.includes('wifi')) return 'auto';
+      // For slow networks (3g,2g) prefer metadata only
       return 'metadata';
     }
   } catch (e) { /* ignore */ }
@@ -812,31 +469,6 @@ window.downloadMediaMetrics = () => {
     URL.revokeObjectURL(url);
   } catch (e) { console.warn('export failed', e); }
 };
-
-// ----- Video diagnostics (debug) -----
-window.__videoDiagnostics = window.__videoDiagnostics || [];
-const logVideoDiag = (payload) => {
-  try {
-    const item = Object.assign({ ts: Date.now(), perf: (performance && performance.now) ? performance.now() : 0 }, payload);
-    window.__videoDiagnostics.push(item);
-    try { localStorage.setItem('tangerine_video_diagnostics', JSON.stringify(window.__videoDiagnostics.slice(-500))); } catch (e) {}
-    console.debug('videoDiag', item);
-  } catch (e) {}
-};
-
-window.downloadVideoDiagnostics = () => {
-  try {
-    const data = JSON.stringify(window.__videoDiagnostics || []);
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tangerine_video_diagnostics_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) { console.warn('export failed', e); }
-};
-
 
 // Register Service Worker (cautious - only when supported and site served over https or localhost)
 if ('serviceWorker' in navigator) {
@@ -1249,162 +881,32 @@ const ParticlesBackground = React.memo(() => {
 const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishlist, onToggleWishlist }) => {
   const [videoState, setVideoState] = useState('thumbnail');
   const [isVisible, setIsVisible] = useState(false);
-  const [currentQuality, setCurrentQuality] = useState(() => qualityManager.getCurrentQuality());
   const videoRef = useRef(null);
   const cardRef = useRef(null);
   const observerRef = useRef(null);
-  const loadStartTimeRef = useRef(0);
-  
-  // diagnostics helper for this card
-  const pushDiag = useCallback((eventName, details = {}) => {
-    try {
-      logVideoDiag({ 
-        productId: product.id || product.name, 
-        mediaIndex: 0, 
-        event: eventName, 
-        details: { ...details, quality: currentQuality }
-      });
-    } catch (e) {}
-  }, [product, currentQuality]);
-
-  // Quality change listener
-  useEffect(() => {
-    // Subscribe to quality changes
-    const unsubscribe = qualityManager.subscribe((newQuality) => {
-      setCurrentQuality(newQuality);
-      if (videoState === 'loaded') {
-        // Reload video with new quality if already playing
-        setVideoState('loading');
-        loadVideo(newQuality);
-      }
-    });
-    return unsubscribe;
-  }, []);
-
-  // Video loading function
-  const loadVideo = useCallback((quality = currentQuality) => {
-    if (!videoRef.current) return;
-    
-    const videoUrl = qualityManager.getOptimalVideoUrl(product.media);
-    if (!videoUrl) {
-      setVideoState('error');
-      return;
-    }
-
-    loadStartTimeRef.current = performance.now();
-    pushDiag('load_start', { quality });
-
-    // Use VideoManager for controlled loading with performance tracking
-    return window.videoManager.load(videoRef.current, videoUrl, {
-      preload: 'auto',
-      minBuffer: 2, // Request 2 seconds of buffer for smooth start
-      poster: product.thumbnail
-    }).then(() => {
-      const loadTime = performance.now() - loadStartTimeRef.current;
-      
-      // Track performance metrics
-      performanceTracker.trackLoadTime(product.id || product.name, loadTime, quality);
-      
-      // Log diagnostics
-      pushDiag('load_complete', { loadTime, quality });
-      
-      // Check performance thresholds
-      if (loadTime > 3000) { // >3s load time
-        pushDiag('slow_load', { loadTime, quality });
-        console.warn(`[Slow Video Load] ${product.name}: ${loadTime}ms`);
-      }
-      
-      if (videoRef.current) {
-        setVideoState('loaded');
-        
-        // Attempt autoplay with monitoring
-        const playStartTime = performance.now();
-        try { 
-          videoRef.current.play()
-            .then(() => {
-              const playDelay = performance.now() - playStartTime;
-              pushDiag('autoplay_success', { playDelay });
-              
-              if (playDelay > 500) { // >500ms play delay
-                pushDiag('slow_autoplay', { playDelay });
-              }
-            })
-            .catch((e) => {
-              performanceTracker.trackError(product.id || product.name, 'autoplay_failed', quality);
-              pushDiag('autoplay_failed', { error: e.message });
-            });
-        } catch (e) {
-          performanceTracker.trackError(product.id || product.name, 'play_error', quality);
-          pushDiag('play_error', { error: e.message });
-        }
-      }
-    }).catch((error) => {
-      // Track and analyze error
-      performanceTracker.trackError(product.id || product.name, error, quality);
-      pushDiag('load_error', { error: error.message, quality });
-      
-      // Log error patterns
-      const metrics = performanceTracker.getVideoMetrics(product.id || product.name);
-      if (metrics && metrics.errorRate > 0.5) { // >50% error rate
-        console.error(`[High Error Rate] ${product.name}:`, metrics);
-      }
-      
-      setVideoState('error');
-      
-      // Smart quality fallback
-      if (quality === 'high' && product.media.length > 1) {
-        pushDiag('quality_fallback', { from: quality, to: 'low', reason: error.message });
-        qualityManager.setQuality('low');
-        loadVideo('low');
-      }
-    });
-  }, [product.media, currentQuality, pushDiag]);
 
   useEffect(() => {
-    let isCurrentMount = true;
-
-    // Start loading video immediately on mount
+    // Start loading video immediately on mount for autoplay
     if (videoState === 'thumbnail') {
       setVideoState('loading');
-      trackEvent('product_view', { 
-        product: product.name, 
-        category: product.category,
-        quality: currentQuality 
-      });
+      trackEvent('product_view', { product: product.name, category: product.category });
     }
     
-    // Intersection Observer for visibility
+    // Optional: Pause video when not visible to save resources
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        const wasVisible = isVisible;
         setIsVisible(entry.isIntersecting);
         
-        if (entry.isIntersecting) {
-          try {
-            if (videoState !== 'loaded' && videoRef.current) {
-              loadVideo();
-            } else if (videoState === 'loaded' && videoRef.current) {
-              // Consider upgrading quality if conditions are good
-              if (qualityManager.shouldUpgradeQuality(currentQuality)) {
-                pushDiag('quality_upgrade_attempt', { from: currentQuality });
-                qualityManager.markUpgradeAttempt();
-                qualityManager.setQuality('high');
-              }
-              
-              // Resume playback
-              try { videoRef.current.play().catch(() => {}); } catch (e) {}
-            }
-          } catch (err) {
-            pushDiag('visibility_error', { error: err.message });
-          }
-        } else if (wasVisible && videoRef.current) {
-          // Clean up when leaving viewport
-          try { 
-            videoRef.current.pause();
-            window.videoManager.unload(videoRef.current);
-            pushDiag('visibility_unload');
-          } catch (e) {}
+        // If the card becomes visible, ensure the video element is loaded to enable instant playback
+        if (entry.isIntersecting && videoRef.current && videoState !== 'loaded') {
+          try { videoRef.current.load(); } catch (e) { /* ignore */ }
+        }
+
+        if (!entry.isIntersecting && videoRef.current && videoState === 'loaded') {
+          videoRef.current.pause();
+        } else if (entry.isIntersecting && videoRef.current && videoState === 'loaded') {
+          videoRef.current.play();
         }
       },
       { threshold: 0.2, rootMargin: '50px' }
@@ -1413,16 +915,9 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
     if (cardRef.current) observerRef.current.observe(cardRef.current);
     
     return () => {
-      isCurrentMount = false;
       if (observerRef.current) observerRef.current.disconnect();
-      if (videoRef.current) {
-        try {
-          videoRef.current.pause();
-          window.videoManager.unload(videoRef.current);
-        } catch (e) {}
-      }
     };
-  }, [videoState, product.name, product.category, product.media, pushDiag]);
+  }, [videoState, product.name, product.category]);
 
   const handleQuickAdd = useCallback((qty, e) => {
     e.stopPropagation();
@@ -1437,17 +932,11 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
   const handleVideoLoad = useCallback(() => {
     setVideoState('loaded');
     try { logMediaMetric(product.id || product.name || 'unknown', 0, 'card_loadeddata'); } catch (e) {}
-    try { pushDiag('loadeddata'); } catch (e) {}
   }, [product]);
 
   const handleVideoError = useCallback(() => {
     setVideoState('error');
-    try { pushDiag('error'); } catch (e) {}
   }, []);
-
-  const handleVidEvent = useCallback((name, e) => {
-    try { pushDiag(name, { buffered: e?.target?.buffered?.length ? e.target.buffered.end(0) : null, currentTime: e?.target?.currentTime }); } catch (err) {}
-  }, [pushDiag]);
 
   return (
     <div 
@@ -1471,66 +960,32 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && onViewDetails(product)}
       >
-        <div className="absolute inset-0 bg-black/20">
-          {/* Optimized Blur Thumbnail */}
-          <img
-            src={product.thumbnail}
-            loading="eager"
-            fetchpriority="high"
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover filter blur-sm scale-105 opacity-50 transition-opacity duration-300"
-            style={{ 
-              WebkitBackfaceVisibility: 'hidden',
-              transform: 'translate3d(0,0,0)'
-            }}
-          />
-          
-          {/* Sharp Thumbnail */}
-          <img
-            src={product.thumbnail}
-            loading="eager"
-            fetchpriority="high"
-            alt={product.name}
-            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-              videoState === 'loaded' ? 'opacity-0' : 'opacity-100'
-            }`}
-            style={{ 
-              WebkitBackfaceVisibility: 'hidden',
-              transform: 'translate3d(0,0,0)'
-            }}
-          />
-        </div>
+        <img
+          src={product.thumbnail}
+          loading="lazy"
+          alt={product.name}
+          className={`absolute inset-0 w-full h-full object-cover transition-all duration-300 ${
+            videoState === 'loaded' ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
 
-        {/* Video Element */}
         {videoState !== 'thumbnail' && videoState !== 'error' && (
           <video
             ref={videoRef}
-            className={`absolute inset-0 w-full h-full object-cover video-smooth transform-gpu ${
-              videoState === 'loaded' ? 'opacity-100' : 'opacity-0'
-            } transition-opacity duration-300`}
-            style={{ 
-              WebkitBackfaceVisibility: 'hidden',
-              transform: 'translate3d(0,0,0)'
-            }}
-            playsInline
-            muted
+            data-product-id={product.id || product.name}
+            src={product.media[0]}
+            className="absolute inset-0 w-full h-full object-cover video-smooth"
+            autoPlay
             loop
+            muted
+            playsInline
+            preload={getPreferredPreload()}
             poster={product.thumbnail}
             fetchpriority="high"
-            data-quality={currentQuality}
-            onLoadStart={(e) => handleVidEvent('loadstart', e)}
-            onLoadedMetadata={(e) => handleVidEvent('loadedmetadata', e)}
-            onProgress={(e) => handleVidEvent('progress', e)}
-            onLoadedData={(e) => { handleVideoLoad(e); handleVidEvent('loadeddata', e); }}
-            onCanPlay={(e) => handleVidEvent('canplay', e)}
-            onCanPlayThrough={(e) => handleVidEvent('canplaythrough', e)}
-            onPlaying={(e) => handleVidEvent('playing', e)}
-            onWaiting={(e) => handleVidEvent('waiting', e)}
-            onStalled={(e) => handleVidEvent('stalled', e)}
-            onSuspend={(e) => handleVidEvent('suspend', e)}
-            onError={(e) => { handleVideoError(e); handleVidEvent('error', e); }}
+            onLoadedData={handleVideoLoad}
+            onError={handleVideoError}
           />
-        )}
+          )}
 
         {videoState === 'loading' && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/20 z-10">
@@ -2436,23 +1891,13 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
   const [mediaLoaded, setMediaLoaded] = useState(false);
   const videoRef = useRef(null);
 
-  // diagnostics helper for detail modal
-  const pushDiag = useCallback((eventName, details = {}) => {
-    try { logVideoDiag({ productId: product?.id || product?.name, mediaIndex: selectedMediaIndex, event: eventName, details }); } catch (e) {}
-  }, [product, selectedMediaIndex]);
-
   useEffect(() => {
     if (product) {
       trackEvent('product_detail_opened', { product: product.name });
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
       if (videoRef.current) {
-        try {
-          // Ensure the detail modal video preloads and starts playing immediately
-          try { videoRef.current.preload = 'auto'; } catch (e) {}
-          try { videoRef.current.load(); } catch (e) {}
-          try { videoRef.current.play().catch(() => {}); } catch (e) {}
-        } catch (err) {}
+        try { videoRef.current.load(); } catch (e) { /* ignore */ }
       }
     }
 
@@ -2494,11 +1939,11 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       >
         <div className="relative">
           {/* Main media preview (image or video) - clicking opens fullscreen viewer */}
-      <div
-        onClick={() => openViewer && openViewer(product, selectedMediaIndex)}
-        className="cursor-zoom-in relative w-full h-72 rounded-t-3xl overflow-hidden"
-        role="button"
-        tabIndex={0}
+          <div
+            onClick={() => openViewer && openViewer(product, selectedMediaIndex)}
+            className="cursor-zoom-in relative w-full h-72 rounded-t-3xl overflow-hidden"
+            role="button"
+            tabIndex={0}
           >
             {product.media[selectedMediaIndex] && product.media[selectedMediaIndex].match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
               <>
@@ -2515,20 +1960,10 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                   loop
                   muted
                   playsInline
-                  // Use auto preload in the detail modal for instant playback on open
-                  preload="auto"
+                  preload="none" // Changé pour éviter le préchargement automatique
                   poster={product.thumbnail}
                   fetchpriority="high"
-                  onLoadStart={(e) => pushDiag('loadstart')}
-                  onLoadedMetadata={(e) => pushDiag('loadedmetadata')}
-                  onProgress={(e) => pushDiag('progress', { buffered: e?.target?.buffered?.length ? e.target.buffered.end(0) : null })}
-                  onLoadedData={(e) => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){}; pushDiag('loadeddata'); }}
-                  onCanPlay={(e) => pushDiag('canplay')}
-                  onCanPlayThrough={(e) => pushDiag('canplaythrough')}
-                  onPlaying={(e) => pushDiag('playing')}
-                  onWaiting={(e) => pushDiag('waiting')}
-                  onStalled={(e) => pushDiag('stalled')}
-                  onError={(e) => { pushDiag('error'); }}
+                  onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
                 />
               </>
             ) : (
@@ -2570,15 +2005,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { 
-                  setSelectedMediaIndex(idx); 
-                  setMediaLoaded(false); 
-                  if (videoRef.current) {
-                    try { videoRef.current.preload = 'auto'; } catch(e){}
-                    try { videoRef.current.load(); } catch(e){}
-                    try { videoRef.current.play().catch(() => {}); } catch(e){}
-                  }
-                }}
+                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
                 className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
@@ -2587,14 +2014,12 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                 tabIndex={0}
               >
                 {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-                  // Use poster (product.thumbnail) so the tiny video thumbnails are not black while loading.
                   <video 
                     src={m} 
-                    poster={product.thumbnail}
                     className="w-24 h-16 object-cover video-smooth"
                     muted={true}
                     defaultMuted={true}
-                    preload="metadata"
+                    preload={getPreferredPreload()} 
                     playsInline 
                     fetchpriority="high"
                     onPlay={(e) => { 
@@ -2614,11 +2039,8 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                         const h = v.videoHeight || 0;
                         if (h > w) v.classList.add('is-portrait');
                         else v.classList.remove('is-portrait');
-                        // thumbnail loaded
-                        try { logVideoDiag({ productId: product.id || product.name, mediaIndex: idx, event: 'thumb_loadedmetadata' }); } catch(e){}
                       } catch (err) {}
                     }}
-                    onError={(e) => { try { logVideoDiag({ productId: product.id || product.name, mediaIndex: idx, event: 'thumb_error' }); } catch(e){} }}
                   />
                 ) : (
                   <img src={m} className="w-24 h-16 object-cover" loading="lazy" />
@@ -2746,9 +2168,7 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
       if (src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
         const v = document.createElement('video');
         v.src = src;
-        // Preload aggressively neighbours for smooth viewer experience
-        v.preload = (index === i) ? 'auto' : 'metadata';
-        try { logVideoDiag({ productId: product.id || product.name, mediaIndex: i, event: 'preload_attempt', details: { preload: v.preload } }); } catch(e){}
+        v.preload = 'auto';
       } else {
         const img = new Image(); img.src = src;
       }
@@ -2863,9 +2283,8 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
                   defaultMuted={true}
                   controls
                   playsInline
-                    // Preload aggressively for the active media to reduce startup delay
-                    preload={index === idx ? 'auto' : 'metadata'}
-                    fetchpriority={index === idx ? 'high' : 'low'}
+                  preload={getPreferredPreload()}
+                  fetchpriority={index === idx ? 'high' : 'low'}
                   onLoadedData={(e) => { 
                     try { 
                       // Ensure video is muted
@@ -2984,55 +2403,6 @@ const App = () => {
     trackEvent('viewer_closed');
   }, []);
 
-  // Diagnostics UI updater: periodically refresh the debug panel content
-  useEffect(() => {
-    let id;
-    const el = () => document.getElementById('tangerine-debug-list');
-    const update = () => {
-      try {
-        const panel = el();
-        if (!panel) return;
-        const arr = window.__videoDiagnostics || [];
-        if (arr.length === 0) panel.textContent = 'No diagnostics yet.';
-        else {
-          const last = arr.slice(-150).map(i => `${new Date(i.ts).toLocaleTimeString()} [${i.productId||'?' }#${i.mediaIndex||0}] ${i.event} ${i.details?JSON.stringify(i.details):''}`).join('\n');
-          panel.textContent = last;
-        }
-      } catch (e) {}
-    };
-    id = setInterval(update, 800);
-    // wire the network check button
-    const btn = document.getElementById('run-network-check');
-    const runCheck = async () => {
-      try {
-        const urls = (PRODUCTS || []).flatMap(p => p.media || []);
-        for (const u of urls) {
-          const start = Date.now();
-          try {
-            // Try HEAD first (may be blocked by CORS)
-            const headResp = await fetch(u, { method: 'HEAD', mode: 'cors' });
-            logVideoDiag({ productId: 'network-check', event: 'head', url: u, status: headResp.status, duration: Date.now()-start });
-          } catch (headErr) {
-            logVideoDiag({ productId: 'network-check', event: 'head_error', url: u, error: String(headErr) });
-          }
-          try {
-            // Try ranged GET for first KB
-            const rstart = Date.now();
-            const rangeResp = await fetch(u, { method: 'GET', headers: { Range: 'bytes=0-1023' }, mode: 'cors' });
-            logVideoDiag({ productId: 'network-check', event: 'range', url: u, status: rangeResp.status, duration: Date.now()-rstart });
-          } catch (rangeErr) {
-            logVideoDiag({ productId: 'network-check', event: 'range_error', url: u, error: String(rangeErr) });
-          }
-        }
-      } catch (e) { logVideoDiag({ productId: 'network-check', event: 'run_error', error: String(e) }); }
-    };
-    if (btn) {
-      btn.addEventListener('click', runCheck);
-    }
-
-    return () => { clearInterval(id); if (btn) btn.removeEventListener('click', runCheck); };
-  }, []);
-
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -3113,6 +2483,41 @@ const App = () => {
           }
         });
       });
+
+      // On mobile, aggressively attempt to load and autoplay the visible/menu carousel videos
+      try {
+        const isMobile = window.innerWidth <= 900 || /Mobi|Android/i.test(navigator.userAgent || '');
+        if (isMobile) {
+          // Select first few video elements in the main carousel (menu area)
+          const menuVideos = Array.from(document.querySelectorAll('main video')).slice(0, 5);
+          menuVideos.forEach((v, idx) => {
+            try {
+              // Ensure attributes needed for mobile autoplay
+              v.muted = true;
+              v.defaultMuted = true;
+              v.playsInline = true;
+              v.setAttribute('playsinline', '');
+              v.setAttribute('muted', '');
+              // Prefer aggressive preload for immediate start
+              try { v.preload = 'auto'; } catch (e) {}
+              try { v.load(); } catch (e) {}
+
+              // Attempt to play with a few retries (some mobile webviews require user gesture or retry)
+              let attempts = 0;
+              const tryPlay = () => {
+                attempts += 1;
+                v.play().then(() => {
+                  try { logMediaMetric(v.dataset?.productId || `menu_video_${idx}`, 0, 'menu_autoplay_success'); } catch (e) {}
+                }).catch(() => {
+                  if (attempts < 4) setTimeout(tryPlay, 400 + attempts * 200);
+                  else try { logMediaMetric(v.dataset?.productId || `menu_video_${idx}`, 0, 'menu_autoplay_failed'); } catch (e) {}
+                });
+              };
+              tryPlay();
+            } catch (e) { /* ignore per-video errors */ }
+          });
+        }
+      } catch (e) { /* ignore overall */ }
     } catch (e) { /* ignore preload errors */ }
   }, [isLoading]);
   
@@ -3332,20 +2737,6 @@ const App = () => {
     <div className={bgClasses}>
   {theme === 'dark' && showParticles && <ParticlesBackground />}
 
-      {/* Diagnostics toggle (small) */}
-      <button
-        id="tangerine-debug-toggle"
-        onClick={() => {
-          const el = document.getElementById('tangerine-debug-panel');
-          if (!el) return;
-          el.style.display = el.style.display === 'none' ? 'block' : 'none';
-        }}
-        className="fixed left-4 bottom-24 z-50 bg-black/60 text-white rounded-full w-12 h-12 flex items-center justify-center shadow-lg"
-        title="Diagnostics"
-      >
-        🐞
-      </button>
-
       <ThemeToggle theme={theme} onToggle={handleThemeToggle} cartOpen={isCartOpen} />
 
       <header className="relative z-10 max-w-7xl mx-auto pb-4 px-4 telegram-header">
@@ -3500,22 +2891,6 @@ const App = () => {
       />
       
       <Confetti trigger={confettiTrigger} />
-      {/* Diagnostics overlay (hidden by default) */}
-      <div id="tangerine-debug-panel" style={{display: 'none'}} className="fixed right-4 top-16 z-[100] w-80 max-h-[70vh] overflow-auto glass-dark rounded-2xl p-3 text-xs">
-        <div className="flex items-center justify-between mb-2">
-          <strong className="text-sm">Diagnostics</strong>
-          <div className="flex items-center gap-2">
-            <button onClick={() => { try { window.downloadVideoDiagnostics(); } catch(e){} }} className="bg-green-500 text-white px-2 py-1 rounded">Export</button>
-            <button onClick={() => { try { localStorage.removeItem('tangerine_video_diagnostics'); window.__videoDiagnostics = []; alert('Cleared'); } catch(e){} }} className="bg-red-500 text-white px-2 py-1 rounded">Clear</button>
-          </div>
-        </div>
-        <div className="mb-2">
-          <button id="run-network-check" className="w-full bg-orange-500 text-white py-2 rounded">Run network checks</button>
-        </div>
-        <div id="tangerine-debug-list" style={{whiteSpace: 'pre-wrap', fontFamily: 'monospace'}}>
-          Loading diagnostics...
-        </div>
-      </div>
     </div>
   );
 };
