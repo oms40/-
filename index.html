@@ -428,7 +428,102 @@
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-// Prefered preload based on network conditions (mobile-friendly)
+// Central video loading and caching manager
+class VideoManager {
+  constructor(maxConcurrent = 3) {
+    this.maxConcurrent = maxConcurrent;
+    this.loading = new Set();
+    this.cache = new Map();
+    this.queue = [];
+  }
+
+  async loadVideo(src, options = {}) {
+    // Return cached result if available and valid
+    if (this.cache.has(src)) {
+      const cached = this.cache.get(src);
+      if (cached.blob && !cached.error) {
+        return cached.blob;
+      }
+    }
+
+    // Queue if too many concurrent loads
+    if (this.loading.size >= this.maxConcurrent) {
+      await new Promise(resolve => this.queue.push(resolve));
+    }
+
+    // Start loading
+    this.loading.add(src);
+    try {
+      const response = await fetch(src);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      this.cache.set(src, { blob: objectUrl, error: null });
+      return objectUrl;
+    } catch (error) {
+      this.cache.set(src, { blob: null, error });
+      throw error;
+    } finally {
+      this.loading.delete(src);
+      if (this.queue.length > 0) {
+        const next = this.queue.shift();
+        next();
+      }
+    }
+  }
+
+  preloadVideo(src) {
+    if (this.cache.has(src)) return;
+    this.loadVideo(src).catch(() => {}); // Silently fail preloads
+  }
+
+  // Prepare a video element for instant playback
+  async prepareVideo(videoElement, src, options = {}) {
+    try {
+      // Force essential mobile attributes
+      videoElement.playsInline = true;
+      videoElement.muted = true;
+      videoElement.setAttribute('playsinline', '');
+      videoElement.setAttribute('muted', '');
+      
+      // Try to load from cache or fetch
+      const objectUrl = await this.loadVideo(src);
+      videoElement.src = objectUrl;
+
+      // Attempt to preload
+      try {
+        videoElement.preload = 'auto';
+        videoElement.load();
+      } catch (e) {}
+
+      // Return play attempt promise
+      return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const tryPlay = () => {
+          attempts++;
+          videoElement.play()
+            .then(resolve)
+            .catch(error => {
+              if (attempts < 3) {
+                setTimeout(tryPlay, 400 * attempts);
+              } else {
+                reject(error);
+              }
+            });
+        };
+        tryPlay();
+      });
+    } catch (error) {
+      console.warn('Video prepare failed:', error);
+      throw error;
+    }
+  }
+}
+
+// Global video manager instance
+window.videoManager = window.videoManager || new VideoManager(3);
+
+// Preferred preload based on network conditions (mobile-friendly)
 const getPreferredPreload = () => {
   try {
     const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -565,7 +660,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Gelato Cheesecake', 
     emoji: '🍰', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/fre.mov'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/c6pp40.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g6" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23ec4899;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f43f5e;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g6)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍰%3C/text%3E%3C/svg%3E',
     desc: 'Texture crémeuse et profil sucré avec arômes de dessert raffiné. Une douceur irrésistible.' 
   },
@@ -574,7 +669,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tropicali Cherry', 
     emoji: '🍒', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHEESECA.mov'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/4420rt.mp4'], 
     thumbnail: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300"%3E%3Cdefs%3E%3ClinearGradient id="g7" x1="0%25" y1="0%25" x2="100%25" y2="100%25"%3E%3Cstop offset="0%25" style="stop-color:%23dc2626;stop-opacity:0.8" /%3E%3Cstop offset="100%25" style="stop-color:%23f43f5e;stop-opacity:0.8" /%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width="400" height="300" fill="url(%23g7)"/%3E%3Ctext x="200" y="150" font-size="80" text-anchor="middle" dominant-baseline="middle"%3E🍒%3C/text%3E%3C/svg%3E',
     desc: 'Cerise tropicale juteuse et sucrée avec finale rafraîchissante. Équilibre parfait.' 
   },
@@ -886,29 +981,53 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
   const observerRef = useRef(null);
 
   useEffect(() => {
-    // Start loading video immediately on mount for autoplay
+    let isCurrentMount = true;
+    let loadStartTime;
+
+    // Start preparing video immediately for instant playback
     if (videoState === 'thumbnail') {
       setVideoState('loading');
+      loadStartTime = performance.now();
+      
+      // Start loading immediately, don't wait for intersection
+      if (videoRef.current && product.media[0]) {
+        window.videoManager.prepareVideo(videoRef.current, product.media[0])
+          .then(() => {
+            if (!isCurrentMount) return;
+            const loadTime = performance.now() - loadStartTime;
+            setVideoState('loaded');
+            pushDiag('load_success', { loadTime });
+          })
+          .catch(error => {
+            if (!isCurrentMount) return;
+            setVideoState('error');
+            pushDiag('load_error', { error: error.message });
+          });
+      }
+      
       trackEvent('product_view', { product: product.name, category: product.category });
     }
     
-    // Optional: Pause video when not visible to save resources
+    // Visibility observer for pause/resume
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
         setIsVisible(entry.isIntersecting);
         
-        // If the card becomes visible, ensure the video element is loaded to enable instant playback
-        if (entry.isIntersecting && videoRef.current && videoState !== 'loaded') {
-          try { videoRef.current.load(); } catch (e) { /* ignore */ }
-        }
+        if (entry.isIntersecting && videoRef.current) {
+          // If video is loaded, ensure it's playing
+          if (videoState === 'loaded') {
+            videoRef.current.play().catch(() => {
+              pushDiag('play_error_after_visible');
+            });
+          }
 
         if (!entry.isIntersecting && videoRef.current && videoState === 'loaded') {
           videoRef.current.pause();
         } else if (entry.isIntersecting && videoRef.current && videoState === 'loaded') {
           videoRef.current.play();
         }
-      },
+      }, 
       { threshold: 0.2, rootMargin: '50px' }
     );
 
@@ -1896,8 +2015,17 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       trackEvent('product_detail_opened', { product: product.name });
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
-      if (videoRef.current) {
-        try { videoRef.current.load(); } catch (e) { /* ignore */ }
+      
+      // Force immediate video load and play using VideoManager
+      const src = product.media[0];
+      if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
+        window.videoManager.prepareVideo(videoRef.current, src)
+          .then(() => {
+            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_success'); } catch(e){}
+          })
+          .catch(error => {
+            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_error', { error: error.message }); } catch(e){}
+          });
       }
     }
 
@@ -1952,18 +2080,34 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                     <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full spinner"></div>
                   </div>
                 )}
+                {/* Video with forced mobile autoplay */}
                 <video
                   ref={videoRef}
-                  src={product.media[selectedMediaIndex]}
                   className="relative w-full h-72 object-cover video-smooth"
-                  autoPlay
                   loop
                   muted
                   playsInline
-                  preload="none" // Changé pour éviter le préchargement automatique
                   poster={product.thumbnail}
                   fetchpriority="high"
-                  onLoadedData={() => { setMediaLoaded(true); try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'loadeddata'); } catch(e){} }}
+                  onLoadedMetadata={() => {
+                    // Start loading immediately after metadata
+                    if (videoRef.current) {
+                      try {
+                        videoRef.current.play()
+                          .then(() => {
+                            setMediaLoaded(true);
+                            try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'detail_autoplay_success'); } catch(e){}
+                          })
+                          .catch(error => {
+                            try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'detail_autoplay_failed', { error: error.message }); } catch(e){}
+                            // Retry once after a short delay
+                            setTimeout(() => {
+                              if (videoRef.current) videoRef.current.play().catch(() => {});
+                            }, 500);
+                          });
+                      } catch(e) {}
+                    }
+                  }}
                 />
               </>
             ) : (
@@ -2447,40 +2591,38 @@ const App = () => {
     loadData();
   }, []);
   
-  // Light preloading of first products' media after initial load to make menu feel instant
+  // Aggressive preloading for menu videos, especially on mobile
   useEffect(() => {
     if (isLoading) return;
+    
     try {
-      const toPreload = PRODUCTS.slice(0, 5);
-      // Decide preload level based on network for mobile friendliness
-      const preloadChoice = (() => {
-        try {
-          const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-          if (nav) {
-            if (nav.saveData) return 'low';
-            const t = (nav.effectiveType || '').toLowerCase();
-            if (t.includes('4g') || t.includes('wifi')) return 'high';
-            return 'low';
-          }
-        } catch (e) {}
-        return 'low';
-      })();
-
+      // On mobile, focus on immediate menu videos
+      const isMobile = window.innerWidth <= 900 || /Mobi|Android/i.test(navigator.userAgent);
+      const toPreload = PRODUCTS.slice(0, isMobile ? 3 : 5);
+      
+      // Immediate thumbnail preload
       toPreload.forEach(p => {
         if (p.thumbnail) {
-          const img = new Image(); img.src = p.thumbnail;
+          const img = new Image();
+          img.src = p.thumbnail;
+          img.fetchPriority = 'high';
         }
-        // Preload only metadata for slow networks, full for fast
-        (p.media || []).slice(0,1).forEach(src => {
-          if (src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
-            if (preloadChoice === 'high') {
-              const v = document.createElement('video'); v.src = src; v.preload = 'auto';
-            } else {
-              const v = document.createElement('video'); v.src = src; v.preload = 'metadata';
-            }
-          } else {
-            const img = new Image(); img.src = src;
+      });
+
+      // Staggered video preload using VideoManager
+      toPreload.forEach((p, index) => {
+        const videoUrls = (p.media || []).slice(0, 1);
+        videoUrls.forEach(src => {
+          if (!src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
+            const img = new Image();
+            img.src = src;
+            return;
           }
+
+          // Use VideoManager for controlled loading
+          setTimeout(() => {
+            window.videoManager.preloadVideo(src);
+          }, index * (isMobile ? 50 : 200));
         });
       });
 
