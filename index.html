@@ -1009,27 +1009,32 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
     }
     
     // Visibility observer for pause/resume
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
+    try {
+      observerRef.current = new IntersectionObserver((entries) => {
         const [entry] = entries;
+        if (!entry || !videoRef.current) return;
+        
         setIsVisible(entry.isIntersecting);
         
-        if (entry.isIntersecting && videoRef.current) {
-          // If video is loaded, ensure it's playing
-          if (videoState === 'loaded') {
-            videoRef.current.play().catch(() => {
-              pushDiag('play_error_after_visible');
-            });
-          }
-
-        if (!entry.isIntersecting && videoRef.current && videoState === 'loaded') {
+        if (videoState !== 'loaded') return;
+        
+        if (entry.isIntersecting) {
+          videoRef.current.play().catch((error) => {
+            console.warn('Video play error:', error);
+            pushDiag('play_error_after_visible');
+          });
+        } else {
           videoRef.current.pause();
-        } else if (entry.isIntersecting && videoRef.current && videoState === 'loaded') {
-          videoRef.current.play();
         }
-      }, 
-      { threshold: 0.2, rootMargin: '50px' }
-    );
+      }, { 
+        threshold: [0.2], 
+        rootMargin: '50px',
+        trackVisibility: true,
+        delay: 100
+      });
+    } catch (error) {
+      console.error('IntersectionObserver setup failed:', error);
+    }
 
     if (cardRef.current) observerRef.current.observe(cardRef.current);
     
@@ -2087,11 +2092,18 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                   loop
                   muted
                   playsInline
+                  autoPlay
                   poster={product.thumbnail}
                   fetchpriority="high"
+                  preload="auto"
                   onLoadedMetadata={() => {
-                    // Start loading immediately after metadata
+                    // Ensure video is properly configured for mobile
                     if (videoRef.current) {
+                      videoRef.current.muted = true;
+                      videoRef.current.defaultMuted = true;
+                      videoRef.current.playsInline = true;
+                      videoRef.current.setAttribute('playsinline', '');
+                      videoRef.current.setAttribute('muted', '');
                       try {
                         videoRef.current.play()
                           .then(() => {
