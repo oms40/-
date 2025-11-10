@@ -609,8 +609,8 @@ const PRODUCTS = [
     name: 'Tropicali', 
     emoji: '🥭', 
     media: [
-      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1798%205%20(1)%20(1)%20(1)%20(2)%20(1).mp4',
-      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204%20(1)%20(1)%20(2).mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1798%205%20(1)%20(1).mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1799%204.mp4',
       'https://file.garden/aRCOOh-cGER2BR_t/PICALINOAUDIO.mp4'
     ], 
     posters: [
@@ -635,14 +635,14 @@ const PRODUCTS = [
       'https://file.garden/aRCOOh-cGER2BR_t/IMG_1243.avif'
     ],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1239.avif',
-    desc: 'Arômes mentholés et terreux avec notes de cookies. Relaxation profonde et sensation apaisante .' 
+    desc: 'Arômes mentholés et terreux avec notes de cookies. Relaxation profonde et sensation apaisante prolongée.' 
   },
   { 
     id: 'ds1', 
     category: 'doublestatic', 
     name: 'Tropi Tangie', 
     emoji: '🍊', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/ORANOAUDIO.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/8mcpqd.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1254.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1254.avif',
     desc: 'Explosion d\'agrumes et tangerine juteuse. Parfait pour la journée, énergisant et euphorisant.' 
@@ -652,7 +652,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Miracle Alien Cookies', 
     emoji: '🍪', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/MACNOAUDIO.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/r2bndl.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1245%20(1).avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1245%20(1).avif',
     desc: 'Saveur gourmande de cookies fraîchement cuits et crème onctueuse. Une expérience douce et réconfortante.' 
@@ -662,7 +662,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tchikita Banana', 
     emoji: '🍌', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/ANANANOAUDIO.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/brxc41.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1247.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1247.avif',
     desc: 'Douceur fruitée de banane mûre avec finale sucrée. Effet relaxant et apaisant.' 
@@ -672,7 +672,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Gelato Cheesecake', 
     emoji: '🍰', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHEESENOAUDIO.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/fre%20(1)%20(1).mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1253.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1253.avif',
     desc: 'Texture crémeuse et profil sucré avec arômes de dessert raffiné. Une douceur irrésistible.' 
@@ -680,9 +680,9 @@ const PRODUCTS = [
   { 
     id: 'ds5', 
     category: 'doublestatic', 
-    name: 'Tropicana Cherry', 
+    name: 'Tropicali Cherry', 
     emoji: '🍒', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHEESECA%20(1).mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHEESENOAUDIO.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1252.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1252.avif',
     desc: 'Cerise tropicale juteuse et sucrée avec finale rafraîchissante. Équilibre parfait.' 
@@ -692,7 +692,7 @@ const PRODUCTS = [
     category: 'freshfrozen', 
     name: 'Grape Pie X Biscotti', 
     emoji: '🍇', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/FRZNNOAUDIO.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/dwoclc.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1246.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1246.avif',
     desc: 'Raisin doux mélangé à des notes de biscuits croquants. Harmonie subtile et saveur élégante.' 
@@ -2036,7 +2036,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
       
-      // Force immediate video load and play using VideoManager
+      // Force initial video load and play using VideoManager
       const src = product.media[0];
       if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
         window.videoManager.prepareVideo(videoRef.current, src)
@@ -2061,6 +2061,31 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       }
     };
   }, [product]);
+
+  // When selectedMediaIndex changes, update the main media source smoothly
+  useEffect(() => {
+    if (!product) return;
+    const src = product.media[selectedMediaIndex];
+    setMediaLoaded(false);
+    if (!src) return;
+
+    if (src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
+      if (videoRef.current) {
+        // Prepare and swap to the new video source via VideoManager for instant playback
+        window.videoManager.prepareVideo(videoRef.current, src)
+          .then(() => {
+            try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'detail_swap_success'); } catch(e){}
+            setMediaLoaded(true);
+          })
+          .catch(() => {
+            // Leave mediaLoaded false; UI shows spinner and poster
+          });
+      }
+    } else {
+      // Non-video media; the <img> branch will render
+      setMediaLoaded(true);
+    }
+  }, [product, selectedMediaIndex]);
 
   if (!product) return null;
 
@@ -2102,6 +2127,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                 )}
                 {/* Video with forced mobile autoplay */}
                 <video
+                  key={`main-${product.id}-${selectedMediaIndex}`}
                   ref={videoRef}
                   className="relative w-full h-72 object-cover video-smooth"
                   loop
@@ -2176,7 +2202,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
+                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); }}
                 className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
