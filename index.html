@@ -2646,39 +2646,27 @@ const App = () => {
   }, []);
   
   // Aggressive preloading for menu videos, especially on mobile
+  const VideoPreloader = () => {
+  const [preloadQueue, setPreloadQueue] = useState([]);
+  
   useEffect(() => {
-    if (isLoading) return;
-    
-    try {
-      // On mobile, focus on immediate menu videos
-      const isMobile = window.innerWidth <= 900 || /Mobi|Android/i.test(navigator.userAgent);
-      const toPreload = PRODUCTS.slice(0, isMobile ? 3 : 5);
-      
-      // Immediate thumbnail preload
-      toPreload.forEach(p => {
-        if (p.thumbnail) {
-          const img = new Image();
-          img.src = p.thumbnail;
-          img.fetchPriority = 'high';
+    // Preload uniquement si connexion rapide
+    if (navigator.connection?.effectiveType === '4g') {
+      // Preload 1 vidéo à la fois avec délai
+      const loadNext = () => {
+        if (preloadQueue.length > 0) {
+          const [next, ...rest] = preloadQueue;
+          window.videoManager.preloadVideo(next)
+            .finally(() => {
+              setPreloadQueue(rest);
+              setTimeout(loadNext, 2000); // 2s entre chaque
+            });
         }
-      });
-
-      // Staggered video preload using VideoManager
-      toPreload.forEach((p, index) => {
-        const videoUrls = (p.media || []).slice(0, 1);
-        videoUrls.forEach(src => {
-          if (!src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
-            const img = new Image();
-            img.src = src;
-            return;
-          }
-
-          // Use VideoManager for controlled loading
-          setTimeout(() => {
-            window.videoManager.preloadVideo(src);
-          }, index * (isMobile ? 50 : 200));
-        });
-      });
+      };
+      loadNext();
+    }
+  }, [preloadQueue]);
+};
 
       // On mobile, aggressively attempt to load and autoplay the visible/menu carousel videos
       try {
