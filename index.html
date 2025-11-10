@@ -558,16 +558,229 @@ window.videoManager = new VideoManager(2);
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
-// Prefered preload based on network conditions (mobile-friendly)
+// Quality Management System
+class QualityManager {
+  constructor() {
+    this._quality = this._getInitialQuality();
+    this._listeners = new Set();
+    this._setupNetworkListener();
+    this._lastUpgrade = 0;
+    this.UPGRADE_COOLDOWN = 10000; // 10s between quality upgrades
+  }
+
+  _getInitialQuality() {
+    try {
+      const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      const stored = localStorage.getItem('video_quality');
+      
+      // Respect user preference if set
+      if (stored) return stored;
+      
+      // Otherwise determine from network
+      if (nav) {
+        if (nav.saveData) return 'low';
+        const t = (nav.effectiveType || '').toLowerCase();
+        if (t.includes('4g') || t.includes('wifi')) return 'auto';
+        return 'low';
+      }
+    } catch (e) {}
+    return 'auto';
+  }
+
+  _setupNetworkListener() {
+    try {
+      const nav = navigator.connection;
+      if (nav) {
+        nav.addEventListener('change', () => {
+          const newQuality = this._getInitialQuality();
+          if (newQuality !== this._quality) {
+            this._quality = newQuality;
+            this._notifyListeners();
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
+  _notifyListeners() {
+    this._listeners.forEach(listener => {
+      try { listener(this._quality); } catch (e) {}
+    });
+  }
+
+  subscribe(listener) {
+    this._listeners.add(listener);
+    return () => this._listeners.delete(listener);
+  }
+
+  getCurrentQuality() {
+    return this._quality;
+  }
+
+  setQuality(quality) {
+    if (this._quality !== quality) {
+      this._quality = quality;
+      try {
+        localStorage.setItem('video_quality', quality);
+      } catch (e) {}
+      this._notifyListeners();
+    }
+  }
+
+  // Get appropriate video URL based on quality setting
+  getOptimalVideoUrl(videoUrls) {
+    if (!videoUrls || !Array.isArray(videoUrls)) return null;
+    
+    const quality = this._quality;
+    if (quality === 'low' && videoUrls.length > 1) {
+      return videoUrls[1]; // Use low quality version if available
+    }
+    return videoUrls[0]; // Default to high quality
+  }
+
+  // Check if we should attempt upgrading video quality
+  shouldUpgradeQuality(currentQuality) {
+    if (currentQuality === 'high') return false;
+    const now = Date.now();
+    if (now - this._lastUpgrade < this.UPGRADE_COOLDOWN) return false;
+    
+    try {
+      const nav = navigator.connection;
+      if (nav) {
+        if (nav.saveData) return false;
+        const t = nav.effectiveType?.toLowerCase() || '';
+        return t.includes('4g') || t.includes('wifi');
+      }
+    } catch (e) {}
+    
+    return false;
+  }
+
+  // Mark quality upgrade attempt
+  markUpgradeAttempt() {
+    this._lastUpgrade = Date.now();
+  }
+}
+
+// Performance and Error Tracking System
+class PerformanceTracker {
+  constructor() {
+    this._metrics = new Map();
+    this._errors = new Map();
+    this._lastReport = Date.now();
+    this.REPORT_INTERVAL = 60000; // Report every minute
+    this._startPeriodicReport();
+  }
+
+  trackLoadTime(videoId, loadTime, quality) {
+    if (!this._metrics.has(videoId)) {
+      this._metrics.set(videoId, { loads: [], errors: 0 });
+    }
+    
+    const metric = this._metrics.get(videoId);
+    metric.loads.push({ time: loadTime, quality, timestamp: Date.now() });
+    
+    // Keep only last 10 measurements
+    if (metric.loads.length > 10) {
+      metric.loads.shift();
+    }
+  }
+
+  trackError(videoId, error, quality) {
+    if (!this._errors.has(videoId)) {
+      this._errors.set(videoId, []);
+    }
+    
+    const errors = this._errors.get(videoId);
+    errors.push({ 
+      error: error.toString(),
+      quality,
+      timestamp: Date.now() 
+    });
+    
+    // Keep only last 5 errors
+    if (errors.length > 5) {
+      errors.shift();
+    }
+
+    // Also increment error count in metrics
+    if (this._metrics.has(videoId)) {
+      this._metrics.get(videoId).errors++;
+    }
+  }
+
+  getVideoMetrics(videoId) {
+    if (!this._metrics.has(videoId)) return null;
+    
+    const metric = this._metrics.get(videoId);
+    const recentLoads = metric.loads.slice(-5);
+    
+    return {
+      avgLoadTime: recentLoads.reduce((sum, m) => sum + m.time, 0) / recentLoads.length,
+      errorRate: metric.errors / (recentLoads.length || 1),
+      recentErrors: this._errors.get(videoId) || []
+    };
+  }
+
+  getGlobalMetrics() {
+    let totalLoads = 0;
+    let totalLoadTime = 0;
+    let totalErrors = 0;
+    
+    for (const [id, metric] of this._metrics) {
+      totalLoads += metric.loads.length;
+      totalLoadTime += metric.loads.reduce((sum, m) => sum + m.time, 0);
+      totalErrors += metric.errors;
+    }
+
+    return {
+      avgLoadTime: totalLoads ? totalLoadTime / totalLoads : 0,
+      errorRate: totalLoads ? totalErrors / totalLoads : 0,
+      totalVideos: this._metrics.size,
+      totalErrors
+    };
+  }
+
+  _startPeriodicReport() {
+    setInterval(() => {
+      const metrics = this.getGlobalMetrics();
+      console.info('[Video Performance Report]', {
+        ...metrics,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Log if error rate is high
+      if (metrics.errorRate > 0.1) { // >10% error rate
+        console.warn('[High Error Rate]', {
+          errorRate: metrics.errorRate,
+          totalErrors: metrics.totalErrors,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Log if load times are high
+      if (metrics.avgLoadTime > 3000) { // >3s average load
+        console.warn('[Slow Load Times]', {
+          avgLoadTime: metrics.avgLoadTime,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }, this.REPORT_INTERVAL);
+  }
+}
+
+// Global instances
+const qualityManager = new QualityManager();
+const performanceTracker = new PerformanceTracker();
+
+// Network-aware preload strategy
 const getPreferredPreload = () => {
   try {
     const nav = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
     if (nav) {
-      // If user enabled save-data, be conservative
       if (nav.saveData) return 'metadata';
       const t = (nav.effectiveType || '').toLowerCase();
       if (t.includes('4g') || t.includes('wifi')) return 'auto';
-      // For slow networks (3g,2g) prefer metadata only
       return 'metadata';
     }
   } catch (e) { /* ignore */ }
@@ -1036,61 +1249,161 @@ const ParticlesBackground = React.memo(() => {
 const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishlist, onToggleWishlist }) => {
   const [videoState, setVideoState] = useState('thumbnail');
   const [isVisible, setIsVisible] = useState(false);
+  const [currentQuality, setCurrentQuality] = useState(() => qualityManager.getCurrentQuality());
   const videoRef = useRef(null);
   const cardRef = useRef(null);
   const observerRef = useRef(null);
+  const loadStartTimeRef = useRef(0);
+  
   // diagnostics helper for this card
   const pushDiag = useCallback((eventName, details = {}) => {
     try {
-      logVideoDiag({ productId: product.id || product.name, mediaIndex: 0, event: eventName, details });
+      logVideoDiag({ 
+        productId: product.id || product.name, 
+        mediaIndex: 0, 
+        event: eventName, 
+        details: { ...details, quality: currentQuality }
+      });
     } catch (e) {}
-  }, [product]);
+  }, [product, currentQuality]);
+
+  // Quality change listener
+  useEffect(() => {
+    // Subscribe to quality changes
+    const unsubscribe = qualityManager.subscribe((newQuality) => {
+      setCurrentQuality(newQuality);
+      if (videoState === 'loaded') {
+        // Reload video with new quality if already playing
+        setVideoState('loading');
+        loadVideo(newQuality);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  // Video loading function
+  const loadVideo = useCallback((quality = currentQuality) => {
+    if (!videoRef.current) return;
+    
+    const videoUrl = qualityManager.getOptimalVideoUrl(product.media);
+    if (!videoUrl) {
+      setVideoState('error');
+      return;
+    }
+
+    loadStartTimeRef.current = performance.now();
+    pushDiag('load_start', { quality });
+
+    // Use VideoManager for controlled loading with performance tracking
+    return window.videoManager.load(videoRef.current, videoUrl, {
+      preload: 'auto',
+      minBuffer: 2, // Request 2 seconds of buffer for smooth start
+      poster: product.thumbnail
+    }).then(() => {
+      const loadTime = performance.now() - loadStartTimeRef.current;
+      
+      // Track performance metrics
+      performanceTracker.trackLoadTime(product.id || product.name, loadTime, quality);
+      
+      // Log diagnostics
+      pushDiag('load_complete', { loadTime, quality });
+      
+      // Check performance thresholds
+      if (loadTime > 3000) { // >3s load time
+        pushDiag('slow_load', { loadTime, quality });
+        console.warn(`[Slow Video Load] ${product.name}: ${loadTime}ms`);
+      }
+      
+      if (videoRef.current) {
+        setVideoState('loaded');
+        
+        // Attempt autoplay with monitoring
+        const playStartTime = performance.now();
+        try { 
+          videoRef.current.play()
+            .then(() => {
+              const playDelay = performance.now() - playStartTime;
+              pushDiag('autoplay_success', { playDelay });
+              
+              if (playDelay > 500) { // >500ms play delay
+                pushDiag('slow_autoplay', { playDelay });
+              }
+            })
+            .catch((e) => {
+              performanceTracker.trackError(product.id || product.name, 'autoplay_failed', quality);
+              pushDiag('autoplay_failed', { error: e.message });
+            });
+        } catch (e) {
+          performanceTracker.trackError(product.id || product.name, 'play_error', quality);
+          pushDiag('play_error', { error: e.message });
+        }
+      }
+    }).catch((error) => {
+      // Track and analyze error
+      performanceTracker.trackError(product.id || product.name, error, quality);
+      pushDiag('load_error', { error: error.message, quality });
+      
+      // Log error patterns
+      const metrics = performanceTracker.getVideoMetrics(product.id || product.name);
+      if (metrics && metrics.errorRate > 0.5) { // >50% error rate
+        console.error(`[High Error Rate] ${product.name}:`, metrics);
+      }
+      
+      setVideoState('error');
+      
+      // Smart quality fallback
+      if (quality === 'high' && product.media.length > 1) {
+        pushDiag('quality_fallback', { from: quality, to: 'low', reason: error.message });
+        qualityManager.setQuality('low');
+        loadVideo('low');
+      }
+    });
+  }, [product.media, currentQuality, pushDiag]);
 
   useEffect(() => {
     let isCurrentMount = true;
 
-    // Start loading video immediately on mount for autoplay
+    // Start loading video immediately on mount
     if (videoState === 'thumbnail') {
       setVideoState('loading');
-      trackEvent('product_view', { product: product.name, category: product.category });
+      trackEvent('product_view', { 
+        product: product.name, 
+        category: product.category,
+        quality: currentQuality 
+      });
     }
     
-    // Optional: Pause video when not visible to save resources
+    // Intersection Observer for visibility
     observerRef.current = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
+        const wasVisible = isVisible;
         setIsVisible(entry.isIntersecting);
         
-        // If the card becomes visible, ensure the video element is loaded
-        if (entry.isIntersecting && videoRef.current) {
+        if (entry.isIntersecting) {
           try {
             if (videoState !== 'loaded' && videoRef.current) {
-              // Use VideoManager for controlled loading
-              window.videoManager.load(videoRef.current, product.media[0], {
-                preload: 'auto',
-                minBuffer: 2, // Request 2 seconds of buffer
-                poster: product.thumbnail
-              }).then(() => {
-                if (isCurrentMount && videoRef.current) {
-                  try { videoRef.current.play().catch(() => {}); } catch (e) {}
-                }
-              }).catch(() => {
-                if (isCurrentMount) setVideoState('error');
-              });
-            } else if (videoState === 'loaded') {
+              loadVideo();
+            } else if (videoState === 'loaded' && videoRef.current) {
+              // Consider upgrading quality if conditions are good
+              if (qualityManager.shouldUpgradeQuality(currentQuality)) {
+                pushDiag('quality_upgrade_attempt', { from: currentQuality });
+                qualityManager.markUpgradeAttempt();
+                qualityManager.setQuality('high');
+              }
+              
+              // Resume playback
               try { videoRef.current.play().catch(() => {}); } catch (e) {}
             }
           } catch (err) {
-            pushDiag('visibility_load_error', { error: err.message });
+            pushDiag('visibility_error', { error: err.message });
           }
-        }
-
-        // Pause and unload when not visible to free up resources
-        if (!entry.isIntersecting && videoRef.current) {
+        } else if (wasVisible && videoRef.current) {
+          // Clean up when leaving viewport
           try { 
             videoRef.current.pause();
-            // Unload from VideoManager to allow other videos to load
             window.videoManager.unload(videoRef.current);
+            pushDiag('visibility_unload');
           } catch (e) {}
         }
       },
@@ -1158,24 +1471,53 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && onViewDetails(product)}
       >
-        <img
-          src={product.thumbnail}
-          loading="lazy"
-          alt={product.name}
-          className={`absolute inset-0 w-full h-full object-cover transition-all duration-300 ${
-            videoState === 'loaded' ? 'opacity-0' : 'opacity-100'
-          }`}
-        />
+        <div className="absolute inset-0 bg-black/20">
+          {/* Optimized Blur Thumbnail */}
+          <img
+            src={product.thumbnail}
+            loading="eager"
+            fetchpriority="high"
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover filter blur-sm scale-105 opacity-50 transition-opacity duration-300"
+            style={{ 
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'translate3d(0,0,0)'
+            }}
+          />
+          
+          {/* Sharp Thumbnail */}
+          <img
+            src={product.thumbnail}
+            loading="eager"
+            fetchpriority="high"
+            alt={product.name}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
+              videoState === 'loaded' ? 'opacity-0' : 'opacity-100'
+            }`}
+            style={{ 
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'translate3d(0,0,0)'
+            }}
+          />
+        </div>
 
+        {/* Video Element */}
         {videoState !== 'thumbnail' && videoState !== 'error' && (
           <video
             ref={videoRef}
-            className="absolute inset-0 w-full h-full object-cover video-smooth"
+            className={`absolute inset-0 w-full h-full object-cover video-smooth transform-gpu ${
+              videoState === 'loaded' ? 'opacity-100' : 'opacity-0'
+            } transition-opacity duration-300`}
+            style={{ 
+              WebkitBackfaceVisibility: 'hidden',
+              transform: 'translate3d(0,0,0)'
+            }}
             playsInline
             muted
             loop
             poster={product.thumbnail}
             fetchpriority="high"
+            data-quality={currentQuality}
             onLoadStart={(e) => handleVidEvent('loadstart', e)}
             onLoadedMetadata={(e) => handleVidEvent('loadedmetadata', e)}
             onProgress={(e) => handleVidEvent('progress', e)}
