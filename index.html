@@ -609,12 +609,14 @@ const PRODUCTS = [
     name: 'Tropicali', 
     emoji: '🥭', 
     media: [
-      'https://file.garden/aRCOOh-cGER2BR_t/PICALI0',
-      'https://file.garden/aRCOOh-cGER2BR_t/PICALI',
+      'https://file.garden/aRCOOh-cGER2BR_t/Picali0.mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/PICALI1.mp4',
+      'https://file.garden/aRCOOh-cGER2BR_t/PICALINOAUDIO.mp4'
     ], 
     posters: [
-      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1241.avif',
-      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1242.avif',
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1258_converted.avif',
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1259_converted.avif',
+      'https://file.garden/aRCOOh-cGER2BR_t/IMG_1248.avif'
     ],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1241.avif',
     desc: 'Profil tropical intense avec notes de mangue fraîche et fruits exotiques. Effet énergisant et créatif.' 
@@ -640,7 +642,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tropi Tangie', 
     emoji: '🍊', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/8mcpqd.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/ORANOAUDIO.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1254.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1254.avif',
     desc: 'Explosion d\'agrumes et tangerine juteuse. Parfait pour la journée, énergisant et euphorisant.' 
@@ -650,7 +652,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Miracle Alien Cookies', 
     emoji: '🍪', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/r2bndl.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/MACNOAUDIO.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1245%20(1).avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1245%20(1).avif',
     desc: 'Saveur gourmande de cookies fraîchement cuits et crème onctueuse. Une expérience douce et réconfortante.' 
@@ -660,7 +662,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Tchikita Banana', 
     emoji: '🍌', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/brxc41.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/ANANANOAUDIO.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1247.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1247.avif',
     desc: 'Douceur fruitée de banane mûre avec finale sucrée. Effet relaxant et apaisant.' 
@@ -670,7 +672,7 @@ const PRODUCTS = [
     category: 'doublestatic', 
     name: 'Gelato Cheesecake', 
     emoji: '🍰', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/fre%20(1)%20(1).mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHEESENOAUDIO.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1253.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1253.avif',
     desc: 'Texture crémeuse et profil sucré avec arômes de dessert raffiné. Une douceur irrésistible.' 
@@ -678,9 +680,9 @@ const PRODUCTS = [
   { 
     id: 'ds5', 
     category: 'doublestatic', 
-    name: 'Tropicali Cherry', 
+    name: 'Tropicana Cherry', 
     emoji: '🍒', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHEESENOAUDIO.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/CHERRY.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1252.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1252.avif',
     desc: 'Cerise tropicale juteuse et sucrée avec finale rafraîchissante. Équilibre parfait.' 
@@ -690,7 +692,7 @@ const PRODUCTS = [
     category: 'freshfrozen', 
     name: 'Grape Pie X Biscotti', 
     emoji: '🍇', 
-    media: ['https://file.garden/aRCOOh-cGER2BR_t/dwoclc.mp4'], 
+    media: ['https://file.garden/aRCOOh-cGER2BR_t/FRZNNOAUDIO.mp4'], 
     posters: ['https://file.garden/aRCOOh-cGER2BR_t/IMG_1246.avif'],
     thumbnail: 'https://file.garden/aRCOOh-cGER2BR_t/IMG_1246.avif',
     desc: 'Raisin doux mélangé à des notes de biscuits croquants. Harmonie subtile et saveur élégante.' 
@@ -2560,26 +2562,19 @@ const ThemeToggle = ({ theme, onToggle, cartOpen = false }) => {
 };
 
 // ===== MAIN APP =====
-const App = () => {
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [cart, setCart] = useState([]);
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [notification, setNotification] = useState({ message: '', isVisible: false, type: 'success' });
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [isContactOpen, setIsContactOpen] = useState(false);
-  const [deliveryCity, setDeliveryCity] = useState('rabat');
-  const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [appliedPromo, setAppliedPromo] = useState('');
-  const [wishlist, setWishlist] = useState([]);
-  const [orderHistory, setOrderHistory] = useState([]);
-  const [confettiTrigger, setConfettiTrigger] = useState(0);
-  const [theme, setTheme] = useState('dark'); // Default to dark (base color)
-  const [showParticles, setShowParticles] = useState(false);
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerProduct, setViewerProduct] = useState(null);
-  const [viewerStartIndex, setViewerStartIndex] = useState(0);
+// Utilise React.memo sur TOUS les composants enfants
+const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishlist, onToggleWishlist }) => {
+  // ... code existant
+}, (prevProps, nextProps) => {
+  // Custom comparison pour éviter re-render si product identique
+  return prevProps.product.id === nextProps.product.id &&
+         prevProps.isInWishlist === nextProps.isInWishlist;
+});
+
+// Même chose pour CartDrawer, ProductDetailModal, etc.
+const CartDrawer = React.memo(({ isOpen, onClose, cart, ... }) => {
+  // ... code existant
+});
 
   const openViewer = useCallback((product, startIndex = 0) => {
     setViewerProduct(product);
@@ -2644,27 +2639,39 @@ const App = () => {
   }, []);
   
   // Aggressive preloading for menu videos, especially on mobile
-  const VideoPreloader = () => {
-  const [preloadQueue, setPreloadQueue] = useState([]);
-  
   useEffect(() => {
-    // Preload uniquement si connexion rapide
-    if (navigator.connection?.effectiveType === '4g') {
-      // Preload 1 vidéo à la fois avec délai
-      const loadNext = () => {
-        if (preloadQueue.length > 0) {
-          const [next, ...rest] = preloadQueue;
-          window.videoManager.preloadVideo(next)
-            .finally(() => {
-              setPreloadQueue(rest);
-              setTimeout(loadNext, 2000); // 2s entre chaque
-            });
+    if (isLoading) return;
+    
+    try {
+      // On mobile, focus on immediate menu videos
+      const isMobile = window.innerWidth <= 900 || /Mobi|Android/i.test(navigator.userAgent);
+      const toPreload = PRODUCTS.slice(0, isMobile ? 3 : 5);
+      
+      // Immediate thumbnail preload
+      toPreload.forEach(p => {
+        if (p.thumbnail) {
+          const img = new Image();
+          img.src = p.thumbnail;
+          img.fetchPriority = 'high';
         }
-      };
-      loadNext();
-    }
-  }, [preloadQueue]);
-};
+      });
+
+      // Staggered video preload using VideoManager
+      toPreload.forEach((p, index) => {
+        const videoUrls = (p.media || []).slice(0, 1);
+        videoUrls.forEach(src => {
+          if (!src.match(/\.(mp4|webm|ogg)(\?.*)?$/i)) {
+            const img = new Image();
+            img.src = src;
+            return;
+          }
+
+          // Use VideoManager for controlled loading
+          setTimeout(() => {
+            window.videoManager.preloadVideo(src);
+          }, index * (isMobile ? 50 : 200));
+        });
+      });
 
       // On mobile, aggressively attempt to load and autoplay the visible/menu carousel videos
       try {
