@@ -27,10 +27,140 @@
 <!-- Improve connection for third-party media hosts to speed up video loads -->
 <link rel="preconnect" href="https://files.catbox.moe" crossorigin>
 <link rel="preconnect" href="https://file.garden" crossorigin>
-<!-- Preload the Tropicali example videos to reduce first-play delay -->
-<link rel="preload" as="video" href="https://files.catbox.moe/p7wuqu.mp4" type="video/mp4">
-<link rel="preload" as="video" href="https://file.garden/aRCOOh-cGER2BR_t/copy_A0E9A19D-D622-46CF-B7FC-ACC032A9499F%20(1).mp4" type="video/mp4">
+<!-- Preload key assets -->
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+
+<!-- Global VideoManager for optimized loading -->
+<script>
+class VideoManager {
+  constructor(maxConcurrent = 2) {
+    this.maxConcurrent = maxConcurrent;
+    this.loading = new Set();
+    this.queue = [];
+    this.retryDelays = [1000, 2000, 4000, 8000]; // Exponential backoff
+  }
+
+  async load(videoElement, src, options = {}) {
+    const key = src;
+    if (this.loading.has(key)) {
+      return new Promise((resolve) => {
+        this.queue.push({ videoElement, src, options, resolve });
+      });
+    }
+
+    if (this.loading.size >= this.maxConcurrent) {
+      return new Promise((resolve) => {
+        this.queue.push({ videoElement, src, options, resolve });
+      });
+    }
+
+    return this._loadVideo(videoElement, src, options);
+  }
+
+  async _loadVideo(videoElement, src, options = {}, retryCount = 0) {
+    const key = src;
+    this.loading.add(key);
+
+    try {
+      videoElement.preload = options.preload || 'auto';
+      if (options.poster) videoElement.poster = options.poster;
+      videoElement.src = src;
+
+      // Wait for metadata first
+      await new Promise((resolve, reject) => {
+        const onMetadata = () => {
+          videoElement.removeEventListener('loadedmetadata', onMetadata);
+          videoElement.removeEventListener('error', onError);
+          resolve();
+        };
+        const onError = () => {
+          videoElement.removeEventListener('loadedmetadata', onMetadata);
+          videoElement.removeEventListener('error', onError);
+          reject(videoElement.error);
+        };
+        videoElement.addEventListener('loadedmetadata', onMetadata);
+        videoElement.addEventListener('error', onError);
+
+        // Start loading
+        try { videoElement.load(); } catch (e) { reject(e); }
+      });
+
+      // Then wait for enough buffer
+      await new Promise((resolve, reject) => {
+        const check = () => {
+          try {
+            const buffered = videoElement.buffered;
+            if (buffered.length > 0) {
+              const bufferedSeconds = buffered.end(0) - buffered.start(0);
+              if (bufferedSeconds >= (options.minBuffer || 1)) {
+                resolve();
+                return true;
+              }
+            }
+          } catch (e) {}
+          return false;
+        };
+
+        if (check()) return;
+
+        const onProgress = () => {
+          if (check()) {
+            cleanup();
+          }
+        };
+
+        const onError = () => {
+          cleanup();
+          reject(videoElement.error);
+        };
+
+        const cleanup = () => {
+          videoElement.removeEventListener('progress', onProgress);
+          videoElement.removeEventListener('error', onError);
+        };
+
+        videoElement.addEventListener('progress', onProgress);
+        videoElement.addEventListener('error', onError);
+      });
+
+    } catch (error) {
+      // Retry with backoff if we have retries left
+      if (retryCount < this.retryDelays.length) {
+        await new Promise(r => setTimeout(r, this.retryDelays[retryCount]));
+        return this._loadVideo(videoElement, src, options, retryCount + 1);
+      }
+      throw error;
+    } finally {
+      this.loading.delete(key);
+      this._processQueue();
+    }
+  }
+
+  _processQueue() {
+    if (this.queue.length === 0) return;
+    if (this.loading.size >= this.maxConcurrent) return;
+
+    const next = this.queue.shift();
+    if (next) {
+      this._loadVideo(next.videoElement, next.src, next.options)
+        .then(next.resolve)
+        .catch(next.resolve); // Resolve even on error to continue queue
+    }
+  }
+
+  unload(videoElement) {
+    try {
+      const src = videoElement.src;
+      this.loading.delete(src);
+      videoElement.removeAttribute('src');
+      videoElement.load();
+    } catch (e) {}
+  }
+}
+
+// Global video manager instance
+window.videoManager = new VideoManager(2);
+</script>
 <style>
   * { font-family: 'Poppins', system-ui, sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
   
@@ -917,6 +1047,8 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
   }, [product]);
 
   useEffect(() => {
+    let isCurrentMount = true;
+
     // Start loading video immediately on mount for autoplay
     if (videoState === 'thumbnail') {
       setVideoState('loading');
@@ -929,20 +1061,37 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         const [entry] = entries;
         setIsVisible(entry.isIntersecting);
         
-        // If the card becomes visible, ensure the video element is loaded to enable instant playback
+        // If the card becomes visible, ensure the video element is loaded
         if (entry.isIntersecting && videoRef.current) {
           try {
-            // Prefer aggressive preload/play on visibility to make playback instant
-            try { videoRef.current.preload = 'auto'; } catch (e) {}
-            if (videoState !== 'loaded') {
-              try { videoRef.current.load(); } catch (e) { /* ignore */ }
+            if (videoState !== 'loaded' && videoRef.current) {
+              // Use VideoManager for controlled loading
+              window.videoManager.load(videoRef.current, product.media[0], {
+                preload: 'auto',
+                minBuffer: 2, // Request 2 seconds of buffer
+                poster: product.thumbnail
+              }).then(() => {
+                if (isCurrentMount && videoRef.current) {
+                  try { videoRef.current.play().catch(() => {}); } catch (e) {}
+                }
+              }).catch(() => {
+                if (isCurrentMount) setVideoState('error');
+              });
+            } else if (videoState === 'loaded') {
+              try { videoRef.current.play().catch(() => {}); } catch (e) {}
             }
-            try { videoRef.current.play().catch(() => {}); } catch (e) {}
-          } catch (err) { /* ignore */ }
+          } catch (err) {
+            pushDiag('visibility_load_error', { error: err.message });
+          }
         }
 
+        // Pause and unload when not visible to free up resources
         if (!entry.isIntersecting && videoRef.current) {
-          try { videoRef.current.pause(); } catch (e) {}
+          try { 
+            videoRef.current.pause();
+            // Unload from VideoManager to allow other videos to load
+            window.videoManager.unload(videoRef.current);
+          } catch (e) {}
         }
       },
       { threshold: 0.2, rootMargin: '50px' }
@@ -951,9 +1100,16 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
     if (cardRef.current) observerRef.current.observe(cardRef.current);
     
     return () => {
+      isCurrentMount = false;
       if (observerRef.current) observerRef.current.disconnect();
+      if (videoRef.current) {
+        try {
+          videoRef.current.pause();
+          window.videoManager.unload(videoRef.current);
+        } catch (e) {}
+      }
     };
-  }, [videoState, product.name, product.category]);
+  }, [videoState, product.name, product.category, product.media, pushDiag]);
 
   const handleQuickAdd = useCallback((qty, e) => {
     e.stopPropagation();
@@ -1014,14 +1170,10 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
         {videoState !== 'thumbnail' && videoState !== 'error' && (
           <video
             ref={videoRef}
-            src={product.media[0]}
             className="absolute inset-0 w-full h-full object-cover video-smooth"
-            autoPlay
-            loop
-            muted
             playsInline
-            // Force aggressive preload for the main card video so it can start instantly when visible
-            preload="auto"
+            muted
+            loop
             poster={product.thumbnail}
             fetchpriority="high"
             onLoadStart={(e) => handleVidEvent('loadstart', e)}
@@ -1033,6 +1185,7 @@ const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishl
             onPlaying={(e) => handleVidEvent('playing', e)}
             onWaiting={(e) => handleVidEvent('waiting', e)}
             onStalled={(e) => handleVidEvent('stalled', e)}
+            onSuspend={(e) => handleVidEvent('suspend', e)}
             onError={(e) => { handleVideoError(e); handleVidEvent('error', e); }}
           />
         )}
