@@ -2016,22 +2016,44 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
   const videoRef = useRef(null);
 
   useEffect(() => {
-    if (product) {
+    if (!product) return;
+
+    if (selectedMediaIndex === 0) {
       trackEvent('product_detail_opened', { product: product.name });
-      setSelectedMediaIndex(0);
-      setMediaLoaded(false);
-      
-      // Force immediate video load and play using VideoManager
-      const src = product.media[0];
-      if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
-        window.videoManager.prepareVideo(videoRef.current, src)
-          .then(() => {
-            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_success'); } catch(e){}
-          })
-          .catch(error => {
-            try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_error', { error: error.message }); } catch(e){}
-          });
-      }
+    } else {
+      trackEvent('product_media_changed', { 
+        product: product.name, 
+        mediaIndex: selectedMediaIndex 
+      });
+    }
+    
+    setMediaLoaded(false);
+    
+    // Force immediate video load and play using VideoManager
+    const src = product.media[selectedMediaIndex];
+    if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
+      window.videoManager.prepareVideo(videoRef.current, src)
+        .then(() => {
+          setMediaLoaded(true);
+          try { 
+            logMediaMetric(
+              product.id || product.name || 'unknown',
+              selectedMediaIndex,
+              'detail_load_success'
+            ); 
+          } catch(e){}
+        })
+        .catch(error => {
+          try { 
+            logMediaMetric(
+              product.id || product.name || 'unknown',
+              selectedMediaIndex,
+              'detail_load_error',
+              { error: error.message }
+            ); 
+          } catch(e){}
+        });
+    }
     }
 
     // Nettoyage lors de la fermeture du modal
@@ -2045,7 +2067,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
         } catch (e) { /* ignore */ }
       }
     };
-  }, [product]);
+  }, [product, selectedMediaIndex]);
 
   if (!product) return null;
 
@@ -2088,6 +2110,8 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                 {/* Video with forced mobile autoplay */}
                 <video
                   ref={videoRef}
+                  key={selectedMediaIndex} // Force remount on media change
+                  src={product.media[selectedMediaIndex]}
                   className="relative w-full h-72 object-cover video-smooth"
                   loop
                   muted
@@ -2161,8 +2185,28 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
       {product.media.map((m, idx) => (
               <button
                 key={m + idx}
-                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
-                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
+                onClick={() => {
+                  setSelectedMediaIndex(idx);
+                  setMediaLoaded(false);
+                  if (videoRef.current) {
+                    videoRef.current.pause();
+                    videoRef.current.currentTime = 0;
+                    videoRef.current.src = product.media[idx];
+                    try {
+                      videoRef.current.load();
+                      window.videoManager.prepareVideo(videoRef.current, product.media[idx])
+                        .then(() => setMediaLoaded(true))
+                        .catch(error => console.warn('Media switch failed:', error));
+                    } catch(e) {
+                      console.warn('Media load error:', e);
+                    }
+                  }
+                }}
+                className={`relative rounded-xl overflow-hidden border-2 ${
+                  selectedMediaIndex === idx 
+                    ? 'border-orange-400 ring-2 ring-orange-400/50 scale-105' 
+                    : 'border-white/10 hover:border-white/30'
+                } p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
                 style={{ minWidth: 96, minHeight: 64 }}
                 title={`Ouvrir média ${idx + 1}`}
                 role="option"
