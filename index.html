@@ -7,6 +7,8 @@
 <meta name="description" content="TANGERINE - Shop Premium WPFF, Double Static & Fresh Frozen">
 <meta name="theme-color" content="#1e293b">
 <meta name="color-scheme" content="dark">
+<!-- Basic CSP suited for single-file + known CDNs; tighten on your host if possible -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob:; img-src 'self' https: data: blob:; media-src 'self' https: data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.tailwindcss.com; font-src https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://plausible.io https://www.clarity.ms https://cdn.tailwindcss.com https://gc.zgo.at; connect-src 'self' https: data: blob:; frame-ancestors 'self'; upgrade-insecure-requests">
 
 <!-- Privacy-friendly analytics by Plausible (lazy-init if domain not set) -->
 <script>
@@ -441,6 +443,24 @@
 
 <script type="text/babel">
 const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+// Poster cache for media thumbnails and main videos
+window.__mediaPosters = window.__mediaPosters || new Map();
+const getPosterForSrc = (src) => window.__mediaPosters.get(src);
+const setPosterForSrc = (src, dataUrl) => { try { if (src && dataUrl) window.__mediaPosters.set(src, dataUrl); } catch(e){} };
+const captureVideoFrame = (videoEl) => {
+  try {
+    if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return null;
+    const canvas = document.createElement('canvas');
+    const w = videoEl.videoWidth;
+    const h = videoEl.videoHeight;
+    canvas.width = Math.min(640, w);
+    canvas.height = Math.round(canvas.width * (h / w));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.75);
+  } catch(e) { return null; }
+};
 
 // Central video loading and caching manager
 class VideoManager {
@@ -1349,6 +1369,26 @@ const PaymentMethodSelector = ({ selectedMethod, onMethodChange, showCryptoAddre
 
 // ===== CONFIRMATION MODAL =====
 const ConfirmationModal = ({ isOpen, onConfirm, onCancel, cart, deliveryCity, total, paymentMethod, discount, subtotal, deliveryPrice }) => {
+  const trapRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const el = trapRef.current;
+    if (!el) return;
+    const focusables = el.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    first && first.focus();
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCancel();
+      if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last && last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first && first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
 
   const deliveryInfo = DELIVERY_PRICES[deliveryCity];
@@ -1357,8 +1397,12 @@ const ConfirmationModal = ({ isOpen, onConfirm, onCancel, cart, deliveryCity, to
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in-up"
       onClick={onCancel}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirmer la commande"
     >
       <div 
+        ref={trapRef}
         className="glass-dark rounded-3xl max-w-md w-full animate-zoom-in max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1458,14 +1502,38 @@ const ConfirmationModal = ({ isOpen, onConfirm, onCancel, cart, deliveryCity, to
 
 // ===== CONTACT MODAL =====
 const ContactModal = ({ isOpen, onClose }) => {
+  const trapRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const el = trapRef.current;
+    if (!el) return;
+    const focusables = el.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    first && first.focus();
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last && last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first && first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in-up"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Contact"
     >
       <div 
+        ref={trapRef}
         className="glass-dark rounded-3xl max-w-md w-full animate-slide-up max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -1568,22 +1636,10 @@ const ContactModal = ({ isOpen, onClose }) => {
 const CartDrawer = ({ isOpen, onClose, cart, onUpdateQuantity, onRemoveItem, onCheckout, deliveryCity, onDeliveryCityChange, paymentMethod, onPaymentMethodChange, appliedPromo, onApplyPromo, onRemovePromo }) => {
   const [showCryptoAddress, setShowCryptoAddress] = useState(null);
   
-  const subtotal = useMemo(() => 
-    cart.reduce((sum, item) => sum + item.totalPrice, 0), 
-    [cart]
-  );
-
-  const deliveryPrice = DELIVERY_PRICES[deliveryCity].price;
-  const orderTotal = subtotal + deliveryPrice;
-
-  const discount = useMemo(() => {
-    if (appliedPromo && PROMO_CODES[appliedPromo]) {
-      return Math.round(orderTotal * PROMO_CODES[appliedPromo].discount);
-    }
-    return 0;
-  }, [appliedPromo, orderTotal]);
-
-  const total = orderTotal - discount;
+  const subtotal = useMemo(() => getSubtotal(cart), [cart]);
+  const deliveryPrice = getDeliveryPrice(deliveryCity);
+  const discount = useMemo(() => getDiscount(subtotal, deliveryPrice, appliedPromo), [appliedPromo, subtotal, deliveryPrice]);
+  const total = getTotal(subtotal, deliveryPrice, discount);
   // Minimum spend applies only to product subtotal (excluding delivery)
   const meetsMinimum = subtotal >= MIN_SPEND;
   const remainingAmount = Math.max(0, MIN_SPEND - subtotal);
@@ -1869,6 +1925,9 @@ const Notification = ({ message, isVisible, type = 'success' }) => {
       className={`fixed bottom-28 left-1/2 -translate-x-1/2 glass-dark px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 z-50 flex items-center gap-3 ${
         isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 pointer-events-none'
       }`}
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
     >
       <span className="text-2xl">{icons[type]}</span>
       <span className="text-white font-semibold text-sm">{message}</span>
@@ -2038,18 +2097,20 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
   const [selectedQuantity, setSelectedQuantity] = useState(MIN_QUANTITY);
   const [selectedMediaIndex, setSelectedMediaIndex] = useState(0);
   const [mediaLoaded, setMediaLoaded] = useState(false);
+  const [currentPoster, setCurrentPoster] = useState('');
   const videoRef = useRef(null);
+  const trapRef = useRef(null);
 
   useEffect(() => {
     if (product) {
       trackEvent('product_detail_opened', { product: product.name });
       setSelectedMediaIndex(0);
       setMediaLoaded(false);
-      
-      // Force immediate video load and play using VideoManager
-      const src = product.media[0];
-      if (src?.match(/\.(mp4|webm|ogg)(\?.*)?$/i) && videoRef.current) {
-        window.videoManager.prepareVideo(videoRef.current, src)
+      const firstSrc = product.media[0];
+      const cachedPoster = getPosterForSrc(firstSrc) || product.thumbnail;
+      setCurrentPoster(cachedPoster || '');
+      if (firstSrc?.match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i) && videoRef.current) {
+        window.videoManager.prepareVideo(videoRef.current, firstSrc)
           .then(() => {
             try { logMediaMetric(product.id || product.name || 'unknown', 0, 'detail_load_success'); } catch(e){}
           })
@@ -2076,6 +2137,25 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
 
   const price = PRICES[product.category] * selectedQuantity;
 
+  // focus trap + ESC close
+  useEffect(() => {
+    const el = trapRef.current;
+    if (!el) return;
+    const focusables = el.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    first && first.focus();
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last && last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first && first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const handleAddToCart = () => {
     onAddToCart(product, selectedQuantity, price);
     trackEvent('add_to_cart_from_detail', { 
@@ -2090,8 +2170,12 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
     <div 
       className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in-up"
       onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Détails du produit"
     >
       <div 
+        ref={trapRef}
         className="glass-dark rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
@@ -2103,7 +2187,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             role="button"
             tabIndex={0}
           >
-            {product.media[selectedMediaIndex] && product.media[selectedMediaIndex].match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
+            {product.media[selectedMediaIndex] && product.media[selectedMediaIndex].match(/\.(mp4|webm|ogg|mov)(\?.*)?$/i) ? (
               <>
                 {!mediaLoaded && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-10">
@@ -2118,11 +2202,16 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                   muted
                   playsInline
                   autoPlay
-                  poster={product.thumbnail}
+                  poster={currentPoster || product.thumbnail}
                   fetchpriority="high"
                   preload="auto"
+                  onLoadedData={() => {
+                    try {
+                      const p = captureVideoFrame(videoRef.current);
+                      if (p) { setPosterForSrc(product.media[selectedMediaIndex], p); setCurrentPoster(p); }
+                    } catch(e) {}
+                  }}
                   onLoadedMetadata={() => {
-                    // Ensure video is properly configured for mobile
                     if (videoRef.current) {
                       videoRef.current.muted = true;
                       videoRef.current.defaultMuted = true;
@@ -2137,10 +2226,6 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                           })
                           .catch(error => {
                             try { logMediaMetric(product.id || product.name || 'unknown', selectedMediaIndex, 'detail_autoplay_failed', { error: error.message }); } catch(e){}
-                            // Retry once after a short delay
-                            setTimeout(() => {
-                              if (videoRef.current) videoRef.current.play().catch(() => {});
-                            }, 500);
                           });
                       } catch(e) {}
                     }
@@ -2148,7 +2233,7 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
                 />
               </>
             ) : (
-              <img src={product.thumbnail} alt={product.name} loading="lazy" className="w-full h-72 object-cover" />
+              <img src={currentPoster || product.thumbnail} alt={product.name} loading="lazy" className="w-full h-72 object-cover" />
             )}
 
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
@@ -2183,51 +2268,46 @@ const ProductDetailModal = ({ product, onClose, onAddToCart, openViewer }) => {
             role="listbox"
             aria-label="Sélecteur de médias"
           >
-      {product.media.map((m, idx) => (
-              <button
-                key={m + idx}
-                onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
-                className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
-                style={{ minWidth: 96, minHeight: 64 }}
-                title={`Ouvrir média ${idx + 1}`}
-                role="option"
-                aria-selected={selectedMediaIndex === idx}
-                tabIndex={0}
-              >
-                {m.match(/\.(mp4|webm|ogg)(\?.*)?$/i) ? (
-                  <video 
-                    src={m} 
-                    className="w-24 h-16 object-cover video-smooth"
-                    muted={true}
-                    defaultMuted={true}
-                    preload={getPreferredPreload()} 
-                    playsInline 
-                    fetchpriority="high"
-                    onPlay={(e) => { 
-                      try { 
-                        e.target.muted = true; 
-                        e.target.defaultMuted = true;
-                        e.target.volume = 0; 
-                      } catch(err){} 
-                    }}
-                    onLoadedMetadata={(e) => {
-                      try {
-                        const v = e.target;
-                        v.muted = true;
-                        v.defaultMuted = true;
-                        v.volume = 0;
-                        const w = v.videoWidth || 0;
-                        const h = v.videoHeight || 0;
-                        if (h > w) v.classList.add('is-portrait');
-                        else v.classList.remove('is-portrait');
-                      } catch (err) {}
-                    }}
-                  />
-                ) : (
-                  <img src={m} className="w-24 h-16 object-cover" loading="lazy" />
-                )}
-              </button>
-            ))}
+            {product.media.map((m, idx) => {
+              const poster = getPosterForSrc(m) || product.thumbnail;
+              const isVideo = /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(m);
+              return (
+                <button
+                  key={m + idx}
+                  onClick={() => { setSelectedMediaIndex(idx); setMediaLoaded(false); if (videoRef.current) try { videoRef.current.load(); } catch(e){} }}
+                  className={`rounded-xl overflow-hidden border-2 ${selectedMediaIndex === idx ? 'border-orange-400 ring-2 ring-orange-400/50' : 'border-white/10 hover:border-white/30'} p-0 transition-all focus:outline-none focus:ring-2 focus:ring-orange-400/50`}
+                  style={{ minWidth: 96, minHeight: 64 }}
+                  title={`Ouvrir média ${idx + 1}`}
+                  role="option"
+                  aria-selected={selectedMediaIndex === idx}
+                  tabIndex={0}
+                >
+                  {isVideo ? (
+                    getPosterForSrc(m) ? (
+                      <img src={poster} className="w-24 h-16 object-cover" loading="lazy" />
+                    ) : (
+                      <video 
+                        src={m}
+                        className="w-24 h-16 object-cover video-smooth"
+                        muted
+                        defaultMuted
+                        preload="metadata"
+                        playsInline
+                        fetchpriority="low"
+                        onLoadedData={(e) => {
+                          try {
+                            const p = captureVideoFrame(e.target);
+                            if (p) { setPosterForSrc(m, p); e.target.replaceWith(Object.assign(new Image(), { src: p, className: 'w-24 h-16 object-cover' })); }
+                          } catch(err){}
+                        }}
+                      />
+                    )
+                  ) : (
+                    <img src={m} className="w-24 h-16 object-cover" loading="lazy" />
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -2302,6 +2382,7 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const dragThreshold = 0.15; // 15% width for swipe trigger
   const [isControlsVisible, setIsControlsVisible] = useState(true);
   const controlsTimerRef = useRef(null);
+  const trapRef = useRef(null);
 
   // Gérer l'affichage/masquage automatique des contrôles
   const resetControlsTimer = useCallback(() => {
@@ -2361,6 +2442,25 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   const goNext = () => setIndex(i => Math.min(i + 1, product.media.length - 1));
   const goPrev = () => setIndex(i => Math.max(i - 1, 0));
 
+  // focus trap
+  useEffect(() => {
+    if (!isOpen) return;
+    const el = trapRef.current;
+    if (!el) return;
+    const focusables = el.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    first && first.focus();
+    const onKey = (e) => {
+      if (e.key === 'Tab') {
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last && last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first && first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen]);
+
   const handleTouchStart = (e) => {
     setIsDragging(true);
     startX.current = e.touches[0].clientX;
@@ -2405,9 +2505,9 @@ const FullscreenViewer = ({ isOpen, product, startIndex = 0, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-[90] bg-black/95 flex items-center justify-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[90] bg-black/95 flex items-center justify-center" onClick={onClose} role="dialog" aria-modal="true" aria-label="Visionneuse">
       <div
-        ref={containerRef}
+        ref={(node) => { containerRef.current = node; trapRef.current = node; }}
         onClick={(e) => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -2783,15 +2883,11 @@ const App = () => {
       showNotification('Panier vide !', 'error');
       return;
     }
-    
-    const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-    const deliveryPrice = DELIVERY_PRICES[deliveryCity].price;
-    const orderTotal = subtotal + deliveryPrice;
-    const discount = appliedPromo && PROMO_CODES[appliedPromo] 
-      ? Math.round(orderTotal * PROMO_CODES[appliedPromo].discount)
-      : 0;
-    const total = orderTotal - discount;
-    
+    const subtotal = getSubtotal(cart);
+    const deliveryPrice = getDeliveryPrice(deliveryCity);
+    const discount = getDiscount(subtotal, deliveryPrice, appliedPromo);
+    const total = getTotal(subtotal, deliveryPrice, discount);
+
     // Minimum spend applies only to product subtotal (excluding delivery)
     if (subtotal < MIN_SPEND) {
       const remaining = MIN_SPEND - subtotal;
@@ -2804,13 +2900,10 @@ const App = () => {
   }, [cart, deliveryCity, appliedPromo, showNotification]);
 
   const handleConfirmOrder = useCallback(async () => {
-    const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-    const deliveryPrice = DELIVERY_PRICES[deliveryCity].price;
-    const orderTotal = subtotal + deliveryPrice;
-    const discount = appliedPromo && PROMO_CODES[appliedPromo] 
-      ? Math.round(orderTotal * PROMO_CODES[appliedPromo].discount)
-      : 0;
-    const totalPrice = orderTotal - discount;
+    const subtotal = getSubtotal(cart);
+    const deliveryPrice = getDeliveryPrice(deliveryCity);
+    const discount = getDiscount(subtotal, deliveryPrice, appliedPromo);
+    const totalPrice = getTotal(subtotal, deliveryPrice, discount);
     
     const message = cart
       .map(item => `${item.product.emoji} ${item.product.name} - ${item.quantity}g : ${item.totalPrice}€`)
@@ -2893,13 +2986,10 @@ const App = () => {
     return <LoadingScreen onComplete={() => setIsLoading(false)} />;
   }
 
-  const subtotal = cart.reduce((sum, item) => sum + item.totalPrice, 0);
-  const deliveryPrice = DELIVERY_PRICES[deliveryCity].price;
-  const orderTotal = subtotal + deliveryPrice;
-  const discount = appliedPromo && PROMO_CODES[appliedPromo] 
-    ? Math.round(orderTotal * PROMO_CODES[appliedPromo].discount)
-    : 0;
-  const total = orderTotal - discount;
+  const subtotal = getSubtotal(cart);
+  const deliveryPrice = getDeliveryPrice(deliveryCity);
+  const discount = getDiscount(subtotal, deliveryPrice, appliedPromo);
+  const total = getTotal(subtotal, deliveryPrice, discount);
   // Minimum spend applies only to product subtotal (excluding delivery)
   const meetsMinimum = subtotal >= MIN_SPEND;
   const cartProgress = Math.min(100, (subtotal / MIN_SPEND) * 100);
