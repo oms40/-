@@ -2562,19 +2562,26 @@ const ThemeToggle = ({ theme, onToggle, cartOpen = false }) => {
 };
 
 // ===== MAIN APP =====
-// Utilise React.memo sur TOUS les composants enfants
-const ProductCard = React.memo(({ product, onAddToCart, onViewDetails, isInWishlist, onToggleWishlist }) => {
-  // ... code existant
-}, (prevProps, nextProps) => {
-  // Custom comparison pour éviter re-render si product identique
-  return prevProps.product.id === nextProps.product.id &&
-         prevProps.isInWishlist === nextProps.isInWishlist;
-});
-
-// Même chose pour CartDrawer, ProductDetailModal, etc.
-const CartDrawer = React.memo(({ isOpen, onClose, cart, ... }) => {
-  // ... code existant
-});
+const App = () => {
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [cart, setCart] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [notification, setNotification] = useState({ message: '', isVisible: false, type: 'success' });
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isContactOpen, setIsContactOpen] = useState(false);
+  const [deliveryCity, setDeliveryCity] = useState('rabat');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [appliedPromo, setAppliedPromo] = useState('');
+  const [wishlist, setWishlist] = useState([]);
+  const [orderHistory, setOrderHistory] = useState([]);
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const [theme, setTheme] = useState('dark'); // Default to dark (base color)
+  const [showParticles, setShowParticles] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerProduct, setViewerProduct] = useState(null);
+  const [viewerStartIndex, setViewerStartIndex] = useState(0);
 
   const openViewer = useCallback((product, startIndex = 0) => {
     setViewerProduct(product);
